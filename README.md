@@ -90,6 +90,37 @@ sind 1:1 nach JavaScript portiert). Unterschiede zur Android-App:
 - Die Sparentwicklung ist in zwei Felder mit gemeinsamer Monatsachse geteilt, weil Sparrate
   und Gesamtstand um Größenordnungen auseinanderliegen (die Android-App macht das genauso)
 
+## Desktop-Version (macOS)
+
+`desktop/` enthält eine Electron-Hülle um dieselbe Oberfläche. Es gibt weiterhin nur eine
+Quelle: `web/index.html`. Ein Sync-Schritt kopiert sie vor dem Start und vor dem Paketieren
+nach `desktop/renderer/`, weil electron-builder nur paketiert, was unterhalb seiner
+`package.json` liegt.
+
+Voraussetzung ist Node.js (`brew install node` oder von nodejs.org).
+
+```bash
+cd desktop
+npm install        # lädt Electron, dauert beim ersten Mal ein paar Minuten
+npm start          # App direkt starten
+npm run dist       # fertige .app und .dmg bauen -> desktop/dist/
+```
+
+Der wichtigste Unterschied zur Browser-Version: **die Daten liegen in einer echten Datei**
+unter `~/Library/Application Support/Kassenbuch/kassenbuch.json`, nicht im localStorage.
+Damit entfällt die Fragilität der Browser-Ablage. Geschrieben wird erst in eine Nebendatei
+und dann umbenannt, damit ein Absturz mitten im Schreiben die vorhandenen Daten nicht
+zerstört. Über **Datei → Datendatei im Finder zeigen** kommt man direkt hin, über
+**Datei → Datendatei sichern …** an eine Kopie.
+
+Die Seite entscheidet selbst, welche Ablage sie benutzt: Reicht das Preload-Skript eine
+Brücke durch (`window.kassenbuchStore`), schreibt sie in die Datei, sonst in den
+localStorage. Derselbe Code läuft also unverändert im Browser und auf dem Desktop.
+
+Die `.app` ist nicht signiert und nicht notarisiert. Selbst gebaut ist das kein Problem –
+macOS setzt das Quarantäne-Merkmal nur bei heruntergeladenen Dateien. Willst du sie auf ein
+anderes Gerät kopieren, braucht es dort einmal Rechtsklick → Öffnen.
+
 ## Technik
 
 | | |

@@ -575,8 +575,46 @@ function migratePots(st) {
  */
 let storageOk = true;
 
+/**
+ * Zwei Ablagen, eine Schnittstelle.
+ *
+ * In der Desktop-App reicht die Brücke aus dem Preload-Skript eine echte
+ * Datei durch; im Browser bleibt es beim localStorage. Der Rest der App
+ * merkt davon nichts.
+ */
+const Store = (() => {
+  const bridge = typeof window !== "undefined" ? window.kassenbuchStore : null;
+
+  if (bridge && typeof bridge.read === "function" && typeof bridge.write === "function") {
+    return {
+      kind: "datei",
+      read: () => bridge.read(),
+      write: text => bridge.write(text),
+      describe: () => {
+        const path = typeof bridge.path === "function" ? bridge.path() : null;
+        return path
+          ? "Gespeichert in einer Datei auf diesem Gerät:\n" + path
+          : "Gespeichert in einer Datei auf diesem Gerät.";
+      }
+    };
+  }
+
+  return {
+    kind: "browser",
+    read: () => localStorage.getItem(KEY),
+    write: text => localStorage.setItem(KEY, text),
+    describe: () => "Gespeichert im Browser dieses Geräts. Auf einem anderen Gerät " +
+                    "oder in einem anderen Browser sind die Daten nicht vorhanden."
+  };
+})();
+
 function probeStorage() {
   try {
+    if (Store.kind === "datei") {
+      Store.read();               // wirft, wenn die Datei nicht lesbar ist
+      storageOk = true;
+      return storageOk;
+    }
     const probe = KEY + ".probe";
     localStorage.setItem(probe, "1");
     const back = localStorage.getItem(probe);
@@ -591,7 +629,7 @@ function probeStorage() {
 function load() {
   if (!probeStorage()) return seed();
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = Store.read();
     if (raw) {
       const p = JSON.parse(raw);
       if (p && Array.isArray(p.entries) && Array.isArray(p.savings)) {
@@ -614,8 +652,8 @@ function save() {
   if (!storageOk) return false;
   try {
     const payload = JSON.stringify(state);
-    localStorage.setItem(KEY, payload);
-    if (localStorage.getItem(KEY) !== payload) throw new Error("Rückgelesener Wert weicht ab");
+    Store.write(payload);
+    if (Store.read() !== payload) throw new Error("Rückgelesener Wert weicht ab");
     return true;
   } catch (e) {
     storageOk = false;
@@ -1825,9 +1863,9 @@ function dataSheet() {
       <div class="when">${state.entries.length} ${state.entries.length === 1 ? "Posten" : "Posten"} ·
         ${state.savings.length} ${state.savings.length === 1 ? "Sparbetrag" : "Sparbeträge"}</div>
 
-      <p class="statusline ${storageOk ? "good" : "bad"}">
+      <p class="statusline ${storageOk ? "good" : "bad"}" style="white-space:pre-line">
         ${storageOk
-          ? "Gespeichert wird im Browser dieses Geräts. Auf einem anderen Gerät oder in einem anderen Browser sind die Daten nicht vorhanden."
+          ? esc(Store.describe())
           : "Dieser Browser lässt die Seite nicht speichern. Sichere den Text unten, sonst gehen die Eingaben beim Neuladen verloren."}
       </p>
 
@@ -1939,7 +1977,7 @@ function render() {
   if (!storageOk) {
     const warn = el(`<div class="banner warn">
       <div>
-        <strong>Dieser Browser lässt die Seite nicht speichern.</strong>
+        <strong>${Store.kind === "datei" ? "Die Datendatei lässt sich nicht schreiben." : "Dieser Browser lässt die Seite nicht speichern."}</strong>
         Deine Eingaben bleiben nur, solange dieses Fenster offen ist – beim Neuladen sind sie weg.
         Häufige Ursachen: privater Modus, blockierte Site-Daten, oder die Seite läuft in einem
         abgeschotteten Rahmen.
