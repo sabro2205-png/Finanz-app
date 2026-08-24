@@ -74,8 +74,10 @@ fun EntryEditorDialog(
     }
     var recurring by remember { mutableStateOf(existing?.recurring ?: false) }
     var startPeriod by remember { mutableIntStateOf(existing?.startPeriod ?: period) }
-    // Bei einmaligen Posten laeuft das Ende immer mit dem Start mit.
-    var endPeriod by remember { mutableStateOf(existing?.endPeriod ?: period) }
+    // Bei einmaligen Posten laeuft das Ende mit dem Start mit; null heisst
+    // unbefristet. Der Typ muss ausgeschrieben werden, sonst leitet Kotlin
+    // wegen des ?: ein nicht-nullbares Int ab und das Setzen auf null scheitert.
+    var endPeriod by remember { mutableStateOf<Int?>(existing?.endPeriod ?: period) }
     var picking by remember { mutableStateOf(Picking.NONE) }
     var pickYear by remember { mutableIntStateOf(Period.yearOf(existing?.startPeriod ?: period)) }
     var showError by remember { mutableStateOf(false) }
