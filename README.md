@@ -70,6 +70,13 @@ sind 1:1 nach JavaScript portiert). Unterschiede zur Android-App:
 
 - Daten liegen im `localStorage` des jeweiligen Browsers, nicht in einer Datenbank –
   sie sind also gerätegebunden und gehen beim Leeren der Browserdaten verloren
+- Manche Umgebungen verweigern der Seite das Speichern (privater Modus, blockierte
+  Site-Daten, ein abgeschotteter iframe ohne `allow-same-origin`). Die Seite prüft das
+  beim Start mit einem Schreib-Lese-Test und beim Speichern durch Zurücklesen; schlägt es
+  fehl, erscheint auf jedem Reiter eine Warnung statt eines stillen Datenverlusts
+- Über den Datenbank-Knopf oben rechts lassen sich alle Daten als Text sichern und wieder
+  einspielen. Bewusst zum Kopieren und Einfügen statt als Download: Downloads sind in
+  abgeschotteten Rahmen blockiert – also genau dort, wo die Sicherung am nötigsten ist
 - Beim ersten Öffnen sind Beispieldaten geladen; ein Klick auf „Alles löschen und leer starten"
   entfernt sie endgültig
 - Die Sparentwicklung ist in zwei Felder mit gemeinsamer Monatsachse geteilt, weil Sparrate

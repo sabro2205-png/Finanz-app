@@ -19,6 +19,7 @@
   --critical:#d03b3b; --good:#006300;
   --chart-surface:#ffffff; --grid:#e6e9e7; --axis:#c4c9c6;
   --shadow:0 1px 2px rgba(18,22,20,.06), 0 18px 40px -22px rgba(18,22,20,.35);
+  --warn-bg:#fdf0e6; --warn-border:#e8b98f;
   --ring:0 0 0 3px rgba(15,76,82,.30);
 }
 @media (prefers-color-scheme: dark) {
@@ -32,6 +33,7 @@
     --critical:#e66767; --good:#0ca30c;
     --chart-surface:#1c201f; --grid:#2a302e; --axis:#3b433f;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -22px rgba(0,0,0,.8);
+    --warn-bg:#33231a; --warn-border:#7a4f2e;
     --ring:0 0 0 3px rgba(111,201,208,.35);
   }
 }
@@ -45,6 +47,7 @@
   --critical:#e66767; --good:#0ca30c;
   --chart-surface:#1c201f; --grid:#2a302e; --axis:#3b433f;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -22px rgba(0,0,0,.8);
+  --warn-bg:#33231a; --warn-border:#7a4f2e;
   --ring:0 0 0 3px rgba(111,201,208,.35);
 }
 
@@ -79,6 +82,7 @@ button { font: inherit; color: inherit; }
   display:flex; align-items:center; gap:10px;
   padding:14px 16px 10px; border-bottom:1px solid var(--rule); background: var(--surface);
 }
+.appbar .iconbtn + .iconbtn { margin-left:6px; }
 .mark {
   width:30px; height:30px; border-radius:9px; background: var(--brand); color: var(--brand-ink);
   display:grid; place-items:center; font-weight:700; font-size:15px; flex:none;
@@ -86,7 +90,7 @@ button { font: inherit; color: inherit; }
 .appbar h1 { margin:0; font-size:16px; font-weight:600; letter-spacing:-.01em; }
 .appbar p { margin:0; font-size:11.5px; color: var(--ink-3); }
 .iconbtn {
-  margin-left:auto; flex:none; width:34px; height:34px; border-radius:10px;
+  flex:none; width:34px; height:34px; border-radius:10px;
   border:1px solid var(--rule); background: var(--card); display:grid; place-items:center; cursor:pointer;
 }
 .iconbtn:hover { border-color: var(--rule-strong); }
@@ -100,6 +104,8 @@ button { font: inherit; color: inherit; }
   padding:10px 12px; margin-bottom:12px; font-size:12.5px; color: var(--ink-2);
 }
 .banner strong { color: var(--ink); font-weight:600; }
+.banner.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+.banner.warn strong { display:block; margin-bottom:2px; }
 .banner button {
   margin-top:4px; background:none; border:none; padding:0; cursor:pointer;
   color: var(--brand); font-weight:600; font-size:12.5px; text-decoration:underline; text-underline-offset:3px;
@@ -298,6 +304,14 @@ input[type=text][aria-invalid="true"] { border-color: var(--critical); }
 .toggle button[aria-pressed="true"]::after { transform:translateX(19px); background: var(--brand-ink); }
 
 .err { font-size:12.5px; color: var(--critical); margin:2px 0 10px; }
+textarea {
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--rule-strong);
+  background: var(--surface); color: var(--ink); font-family:"IBM Plex Mono", ui-monospace, monospace;
+  font-size:11px; line-height:1.5; resize:vertical;
+}
+.statusline { font-size:12.5px; margin:0 0 12px; padding:8px 10px; border-radius:9px; }
+.statusline.good { background: var(--card-2); color: var(--ink-2); }
+.statusline.bad { background: var(--warn-bg); border:1px solid var(--warn-border); color: var(--ink); }
 .sheet .actions { display:flex; gap:8px; align-items:center; margin-top:16px; }
 .sheet .actions .spacer { flex:1; }
 .btn { padding:10px 16px; border-radius:10px; border:1px solid var(--rule-strong); background: var(--surface); cursor:pointer; font-size:14px; font-weight:500; }
@@ -317,6 +331,11 @@ input[type=text][aria-invalid="true"] { border-color: var(--critical); }
       <h1>Kassenbuch</h1>
       <p>Web-Vorschau der Android-App</p>
     </div>
+    <button class="iconbtn" id="dataBtn" type="button" title="Daten sichern oder wiederherstellen" aria-label="Daten sichern oder wiederherstellen" style="margin-left:auto">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>
+      </svg>
+    </button>
     <button class="iconbtn" id="themeBtn" type="button" title="Hell / dunkel umschalten" aria-label="Hell oder dunkel umschalten">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>
@@ -493,7 +512,29 @@ function blank() {
            tab: "month", period: currentPeriod(), year: currentYear() };
 }
 
+/**
+ * Ob dieser Browser der Seite überhaupt erlaubt zu speichern.
+ * In einem abgeschotteten Rahmen (sandbox ohne allow-same-origin), im privaten
+ * Modus oder bei blockierten Site-Daten wirft schon der Zugriff. Das darf nicht
+ * stillschweigend passieren – sonst wähnt man seine Eingaben gespeichert.
+ */
+let storageOk = true;
+
+function probeStorage() {
+  try {
+    const probe = KEY + ".probe";
+    localStorage.setItem(probe, "1");
+    const back = localStorage.getItem(probe);
+    localStorage.removeItem(probe);
+    storageOk = back === "1";
+  } catch (e) {
+    storageOk = false;
+  }
+  return storageOk;
+}
+
 function load() {
+  if (!probeStorage()) return seed();
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -502,13 +543,24 @@ function load() {
         return Object.assign(blank(), p, { tab:"month", period: p.period ?? currentPeriod(), year: p.year ?? currentYear() });
       }
     }
-  } catch (e) { /* privates Fenster, blockierte Site-Daten – dann eben frisch */ }
+  } catch (e) {
+    storageOk = false;
+  }
   return seed();
 }
 
+/** Speichert und schreibt zur Kontrolle zurück – Erfolg wird nicht angenommen. */
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch (e) { /* Speichern nicht möglich – die Sitzung läuft trotzdem weiter */ }
+  if (!storageOk) return false;
+  try {
+    const payload = JSON.stringify(state);
+    localStorage.setItem(KEY, payload);
+    if (localStorage.getItem(KEY) !== payload) throw new Error("Rückgelesener Wert weicht ab");
+    return true;
+  } catch (e) {
+    storageOk = false;
+    return false;
+  }
 }
 
 const nextId = () => state.nextId++;
@@ -1446,6 +1498,132 @@ sheet.addEventListener("input", ev => {
   if (ev.target.id === "f-amount" || ev.target.id === "f-title") { /* Werte werden beim Neuzeichnen ausgelesen */ }
 });
 
+/* ----------------------------------------------------- Sichern / Laden */
+/**
+ * Bewusst über ein Textfeld zum Kopieren und Einfügen: ein Download-Link
+ * wird in abgeschotteten Rahmen blockiert – genau dort, wo die Sicherung
+ * am dringendsten gebraucht wird. Markieren und kopieren geht überall.
+ */
+function dataSheet() {
+  sheet.innerHTML = "";
+  let mode = "backup";      // "backup" | "restore"
+  let message = null;
+  let failed = false;
+
+  function paint() {
+    const payload = JSON.stringify({
+      version: 1,
+      entries: state.entries,
+      savings: state.savings,
+      nextId: state.nextId
+    });
+
+    openSheetKeepFocus(`
+      <h2>Daten</h2>
+      <div class="when">${state.entries.length} ${state.entries.length === 1 ? "Posten" : "Posten"} ·
+        ${state.savings.length} ${state.savings.length === 1 ? "Sparbetrag" : "Sparbeträge"}</div>
+
+      <p class="statusline ${storageOk ? "good" : "bad"}">
+        ${storageOk
+          ? "Gespeichert wird im Browser dieses Geräts. Auf einem anderen Gerät oder in einem anderen Browser sind die Daten nicht vorhanden."
+          : "Dieser Browser lässt die Seite nicht speichern. Sichere den Text unten, sonst gehen die Eingaben beim Neuladen verloren."}
+      </p>
+
+      <div class="seg" role="group" aria-label="Sichern oder wiederherstellen" style="margin-bottom:12px">
+        <button type="button" data-mode="backup"  aria-pressed="${mode === "backup"}">Sichern</button>
+        <button type="button" data-mode="restore" aria-pressed="${mode === "restore"}">Wiederherstellen</button>
+      </div>
+
+      ${mode === "backup" ? `
+        <div class="field">
+          <label for="f-data">Sicherung – markieren und kopieren</label>
+          <textarea id="f-data" readonly rows="5" spellcheck="false">${esc(payload)}</textarea>
+        </div>
+        <button type="button" class="btn" data-copy>In die Zwischenablage kopieren</button>
+      ` : `
+        <div class="field">
+          <label for="f-data">Sicherung hier einfügen</label>
+          <textarea id="f-data" rows="5" spellcheck="false" placeholder='{"version":1,"entries":[…' ></textarea>
+        </div>
+        <p class="hint" style="margin:0">Ersetzt alle aktuellen Daten durch die eingefügte Sicherung.</p>
+      `}
+
+      ${message ? `<p class="${failed ? "err" : "statusline good"}" style="margin-top:10px">${esc(message)}</p>` : ""}
+
+      <div class="destructive">
+        <button type="button" class="danger" data-wipe>Alle Daten löschen</button>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn" data-cancel>Schließen</button>
+        <span class="spacer"></span>
+        ${mode === "restore" ? `<button type="button" class="btn primary" data-restore>Wiederherstellen</button>` : ""}
+      </div>
+    `, null);
+  }
+
+  function restore() {
+    const raw = sheet.querySelector("#f-data").value.trim();
+    if (!raw) { failed = true; message = "Bitte zuerst eine Sicherung einfügen."; paint(); return; }
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (e) { failed = true; message = "Das ist keine gültige Sicherung – der Text lässt sich nicht lesen."; paint(); return; }
+    if (!parsed || !Array.isArray(parsed.entries) || !Array.isArray(parsed.savings)) {
+      failed = true; message = "Das ist keine gültige Sicherung – Posten und Sparbeträge fehlen."; paint(); return;
+    }
+    state.entries = parsed.entries;
+    state.savings = parsed.savings;
+    state.nextId = Number(parsed.nextId) > 0
+      ? Number(parsed.nextId)
+      : Math.max(0, ...parsed.entries.map(e => e.id), ...parsed.savings.map(e => e.id)) + 1;
+    state.demo = false;
+    persistAndRender();
+    failed = false;
+    message = `${parsed.entries.length} Posten und ${parsed.savings.length} Sparbeträge übernommen.`;
+    mode = "backup";
+    paint();
+    announce(message);
+  }
+
+  sheetDelegate = ev => {
+    const t = ev.target.closest("button");
+    if (!t) return;
+    if (t.dataset.mode) { mode = t.dataset.mode; message = null; paint(); }
+    else if (t.hasAttribute("data-copy")) {
+      const field = sheet.querySelector("#f-data");
+      field.select();
+      field.setSelectionRange(0, field.value.length);
+      let done = false;
+      try { done = document.execCommand("copy"); } catch (e) { done = false; }
+      if (navigator.clipboard && !done) {
+        navigator.clipboard.writeText(field.value).then(
+          () => { failed = false; message = "Kopiert."; paint(); },
+          () => { failed = true; message = "Kopieren ging nicht – bitte den markierten Text von Hand kopieren."; paint(); }
+        );
+        return;
+      }
+      failed = !done;
+      message = done ? "Kopiert." : "Kopieren ging nicht – bitte den markierten Text von Hand kopieren.";
+      paint();
+    }
+    else if (t.hasAttribute("data-restore")) restore();
+    else if (t.hasAttribute("data-wipe")) {
+      if (t.dataset.armed === "1") {
+        state = Object.assign(blank(), { tab: state.tab, period: state.period, year: state.year });
+        persistAndRender();
+        closeSheet();
+        announce("Alle Daten gelöscht.");
+      } else {
+        t.dataset.armed = "1";
+        t.textContent = "Wirklich alles löschen? Noch einmal tippen.";
+      }
+    }
+    else if (t.hasAttribute("data-cancel")) closeSheet();
+  };
+
+  paint();
+}
+
 /* ============================================================== Verdrahtung */
 const fab = document.getElementById("fab");
 const fabText = document.getElementById("fabText");
@@ -1454,6 +1632,20 @@ function render() {
   if (state.tab === "month") renderMonth();
   else if (state.tab === "year") renderYear();
   else renderSavings();
+
+  // Warnung vorn anstellen – sie betrifft jeden Reiter.
+  if (!storageOk) {
+    const warn = el(`<div class="banner warn">
+      <div>
+        <strong>Dieser Browser lässt die Seite nicht speichern.</strong>
+        Deine Eingaben bleiben nur, solange dieses Fenster offen ist – beim Neuladen sind sie weg.
+        Häufige Ursachen: privater Modus, blockierte Site-Daten, oder die Seite läuft in einem
+        abgeschotteten Rahmen.
+        <button type="button" data-act="data-sheet">Daten sichern oder wiederherstellen</button>
+      </div>
+    </div>`);
+    view.insertBefore(warn, view.firstChild);
+  }
 
   document.querySelectorAll(".tabs button").forEach(b =>
     b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
@@ -1467,7 +1659,11 @@ function render() {
   view.scrollTop = 0;
 }
 
-function persistAndRender() { save(); render(); }
+function persistAndRender() {
+  const ok = save();
+  render();
+  if (!ok) announce("Achtung: Diese Eingabe konnte nicht dauerhaft gespeichert werden.");
+}
 
 /* Tabs */
 document.querySelectorAll(".tabs button").forEach(b => {
@@ -1505,6 +1701,8 @@ view.addEventListener("click", ev => {
   const goto = ev.target.closest("[data-goto]");
   if (goto) { state.period = Number(goto.dataset.goto); state.tab = "month"; persistAndRender(); return; }
 
+  if (ev.target.closest('[data-act="data-sheet"]')) { dataSheet(); return; }
+
   if (ev.target.closest('[data-act="clear-demo"]')) {
     state = Object.assign(blank(), { tab: state.tab, period: state.period, year: state.year });
     persistAndRender();
@@ -1530,6 +1728,8 @@ function applyTheme(t) {
   else document.documentElement.removeAttribute("data-theme");
 }
 try { applyTheme(localStorage.getItem(THEME_KEY)); } catch (e) {}
+
+document.getElementById("dataBtn").addEventListener("click", dataSheet);
 
 document.getElementById("themeBtn").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
