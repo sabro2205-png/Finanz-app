@@ -17,7 +17,7 @@ class SavingsForecastTest {
     private val today = Period.of(2026, 8)
 
     private fun saving(year: Int, month: Int, cents: Long) =
-        SavingsEntry(period = Period.of(year, month), title = "Sparen", amountCents = cents)
+        SavingsEntry(potId = 1L, period = Period.of(year, month), title = "Sparen", amountCents = cents)
 
     @Test
     fun `Durchschnitt bildet sich nur aus Monaten bis heute`() {

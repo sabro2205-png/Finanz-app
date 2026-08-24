@@ -47,15 +47,32 @@ data class FinanceEntry(
 )
 
 /**
- * Ein Sparbetrag. Bewusst getrennt von [FinanceEntry] – Erspartes fliesst
- * nicht in Einnahmen, Ausgaben oder das Monatsergebnis ein.
+ * Ein Spartopf, z. B. Notgroschen oder Urlaubskasse.
+ * [colorIndex] verweist auf die Farbreihe der Oberflaeche, [targetCents]
+ * ist ein freiwilliges Sparziel.
+ */
+@Entity(tableName = "pots")
+data class SavingsPot(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val name: String,
+    val colorIndex: Int = 0,
+    val targetCents: Long? = null,
+    /** Anzeigereihenfolge, damit Toepfe nicht springen. */
+    val position: Int = 0
+)
+
+/**
+ * Eine Buchung auf einem Spartopf. Bewusst getrennt von [FinanceEntry] –
+ * Erspartes fliesst nicht in Einnahmen, Ausgaben oder das Monatsergebnis ein.
  * Negative Betraege bilden Entnahmen ab.
  */
 @Entity(tableName = "savings")
 data class SavingsEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val potId: Long,
     val period: Int,
-    val title: String,
+    /** Freiwillige Notiz – den Namen traegt der Topf. */
+    val title: String = "",
     val amountCents: Long
 )
 

@@ -37,8 +37,16 @@ Beim Bearbeiten eines laufenden Postens gibt es zusätzlich:
 - Ein Tipp auf einen Monat springt direkt in den Monatsreiter
 
 ### Reiter „Erspartes"
-- Sparbeträge je Monat erfassen (mehrere Posten pro Monat möglich, z. B. Tagesgeld und ETF)
-- Negative Beträge gelten als Entnahme
+- **Spartöpfe**: das Ersparte wird auf benannte Töpfe verteilt (Notgroschen, Urlaubskasse,
+  Neues Auto …). Jeder Topf hat eine Farbe und ein freiwilliges Sparziel, dessen Fortschritt
+  angezeigt wird
+- Eine Filterleiste schaltet zwischen allen Töpfen und einem einzelnen um; Kennzahlen,
+  Diagramm und Prognose beziehen sich dann nur auf diesen Topf
+- Die Karte „Aufteilung" zeigt Inhalt und Anteil jedes Topfes
+- Beim Löschen eines Topfes lassen sich seine Buchungen in einen anderen verschieben,
+  statt sie zu verlieren; der letzte Topf bleibt bestehen
+- Buchungen je Monat erfassen, mit freiwilliger Notiz
+- Negative Beträge gelten als Entnahme aus dem Topf
 - Diagramm mit der monatlichen Sparrate und der kumulierten Entwicklung über das Jahr
 - Kennzahlen: Stand zu Jahresbeginn und -ende, Summe des Jahres, Ø pro Sparmonat, bester Monat
 - **Das Ersparte wird bewusst getrennt geführt und beeinflusst weder Einnahmen noch Ausgaben
@@ -98,7 +106,7 @@ Die App fordert **keine Berechtigungen** an und sendet keine Daten. Alles bleibt
 
 ```
 app/src/main/java/de/sabro/finanzapp/
-├── data/        Room-Entitäten, DAO, Datenbank, Repository
+├── data/        Room-Entitäten, DAO, Datenbank (inkl. Migration 1→2), Repository
 ├── domain/      FinanceCalculator – reine Rechenlogik, ohne Android-Abhängigkeiten
 ├── ui/          MainActivity, ViewModel, Screens (month/year/savings), Dialoge, Diagramme
 └── util/        Monatsindex (Period) und Geldformatierung (Money)
@@ -137,5 +145,7 @@ mit API 35 und JDK 17.
 - Erspartes verändert das Monatsergebnis nicht
 - Sparprognose: Durchschnittsbildung nur aus Monaten bis heute, Entnahmen drücken den
   Durchschnitt, vergangene Leermonate werden nicht hochgerechnet, Vorjahre zählen mit
+- Spartöpfe: getrennte Summen je Topf, Anteile ohne Verzerrung durch negative Bestände,
+  Zielfortschritt zwischen 0 und 100 %, Filter auf einen einzelnen Topf
 - Restlaufzeit und Gültigkeit befristeter Posten über Jahresgrenzen hinweg
 - Parsen deutscher und englischer Betragsschreibweisen, Schutz gegen Division durch Null

@@ -27,6 +27,20 @@ val ExpenseRedDark = Color(0xFFEF8A85)
 val SavingsBlue = Color(0xFF1565C0)
 val SavingsBlueDark = Color(0xFF7FB4F0)
 
+/**
+ * Farben der Spartoepfe – ein zusammenhaengender Ausschnitt einer auf
+ * Farbfehlsichtigkeit geprueften Reihe. Der Topfname steht immer daneben,
+ * die Farbe traegt die Unterscheidung nie allein.
+ */
+val PotColorsLight = listOf(
+    Color(0xFF1BAF7A), Color(0xFFEDA100), Color(0xFFE87BA4),
+    Color(0xFF008300), Color(0xFF4A3AA7), Color(0xFFE34948)
+)
+val PotColorsDark = listOf(
+    Color(0xFF199E70), Color(0xFFC98500), Color(0xFFD55181),
+    Color(0xFF008300), Color(0xFF9085E9), Color(0xFFE66767)
+)
+
 val CategoryColors = listOf(
     Color(0xFF00695C),
     Color(0xFF5E35B1),
@@ -99,6 +113,10 @@ fun expenseColor(): Color = if (isSystemInDarkTheme()) ExpenseRedDark else Expen
 
 @Composable
 fun savingsColor(): Color = if (isSystemInDarkTheme()) SavingsBlueDark else SavingsBlue
+
+/** Topffarben passend zum Hell- oder Dunkelmodus. */
+val PotColors: List<Color>
+    @Composable get() = if (isSystemInDarkTheme()) PotColorsDark else PotColorsLight
 
 @Composable
 fun amountColor(cents: Long): Color = when {

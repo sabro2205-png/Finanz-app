@@ -20,6 +20,7 @@
   --chart-surface:#ffffff; --grid:#e6e9e7; --axis:#c4c9c6;
   --shadow:0 1px 2px rgba(18,22,20,.06), 0 18px 40px -22px rgba(18,22,20,.35);
   --warn-bg:#fdf0e6; --warn-border:#e8b98f;
+  --pot-0:#1baf7a; --pot-1:#eda100; --pot-2:#e87ba4; --pot-3:#008300; --pot-4:#4a3aa7; --pot-5:#e34948;
   --ring:0 0 0 3px rgba(15,76,82,.30);
 }
 @media (prefers-color-scheme: dark) {
@@ -34,6 +35,7 @@
     --chart-surface:#1c201f; --grid:#2a302e; --axis:#3b433f;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -22px rgba(0,0,0,.8);
     --warn-bg:#33231a; --warn-border:#7a4f2e;
+    --pot-0:#199e70; --pot-1:#c98500; --pot-2:#d55181; --pot-3:#008300; --pot-4:#9085e9; --pot-5:#e66767;
     --ring:0 0 0 3px rgba(111,201,208,.35);
   }
 }
@@ -48,6 +50,7 @@
   --chart-surface:#1c201f; --grid:#2a302e; --axis:#3b433f;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -22px rgba(0,0,0,.8);
   --warn-bg:#33231a; --warn-border:#7a4f2e;
+  --pot-0:#199e70; --pot-1:#c98500; --pot-2:#d55181; --pot-3:#008300; --pot-4:#9085e9; --pot-5:#e66767;
   --ring:0 0 0 3px rgba(111,201,208,.35);
 }
 
@@ -177,6 +180,20 @@ button { font: inherit; color: inherit; }
 .catbar { height:6px; border-radius:3px; background: var(--card-2); margin:0 14px 10px; overflow:hidden; }
 .catbar i { display:block; height:100%; border-radius:3px; }
 
+.potfilter { display:flex; gap:7px; overflow-x:auto; padding:2px 0 10px; scrollbar-width:none; }
+.potfilter::-webkit-scrollbar { display:none; }
+.potfilter button {
+  flex:none; display:flex; align-items:center; gap:6px; white-space:nowrap;
+  padding:7px 12px; border-radius:9px; border:1px solid var(--rule-strong);
+  background: var(--card); cursor:pointer; font-size:13px;
+}
+.potfilter button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-weight:600; }
+.potfilter button.add { border-style:dashed; color: var(--ink-2); }
+.stack-bar { display:flex; gap:2px; height:10px; margin:0 14px 12px; }
+.stack-bar i { display:block; border-radius:3px; min-width:3px; }
+.potbar { display:block; height:5px; border-radius:3px; background: var(--card-2); margin-top:5px; overflow:hidden; max-width:190px; }
+.potbar i { display:block; height:100%; border-radius:3px; }
+.row > .dot { flex:none; align-self:center; margin-right:0; }
 .empty { padding:18px; }
 .empty h3 { margin:0 0 6px; font-size:15px; font-weight:600; }
 .empty p { margin:0; font-size:13px; color: var(--ink-2); }
@@ -287,6 +304,12 @@ input[type=text][aria-invalid="true"] { border-color: var(--critical); }
 }
 .chips button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-weight:600; }
 .chips.months button { flex:1 0 60px; text-align:center; }
+.chips button .dot { margin-right:0; }
+.chips button { display:inline-flex; align-items:center; gap:6px; }
+.chips button.ghost { border-style:dashed; color: var(--ink-2); }
+.chips.colors button { padding:6px; }
+.chips.colors .swatch { display:block; width:22px; height:22px; border-radius:7px; }
+.chips.colors button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); }
 
 .toggle { display:flex; align-items:center; gap:12px; padding:10px 0 2px; }
 .toggle .t { flex:1; }
@@ -507,9 +530,41 @@ function buildSavingsState(year, entries, startBalanceCents) {
 const KEY = "kassenbuch.v1";
 let state = null;
 
+/* Sechs Topffarben, ein zusammenhängender Ausschnitt der geprüften Reihe.
+   Mehr Töpfe sind erlaubt, die Farben wiederholen sich dann – der Name steht
+   immer daneben, die Farbe trägt die Unterscheidung nie allein. */
+const POT_COLORS = 6;
+const potColor = pot => `var(--pot-${(pot ? pot.color : 0) % POT_COLORS})`;
+
 function blank() {
-  return { entries: [], savings: [], nextId: 1, demo: false,
-           tab: "month", period: currentPeriod(), year: currentYear() };
+  return { entries: [], savings: [], pots: [], nextId: 1, demo: false,
+           tab: "month", period: currentPeriod(), year: currentYear(), potFilter: null };
+}
+
+/**
+ * Ältere Stände kennen noch keine Töpfe. Dort war die Bezeichnung jedes
+ * Sparbetrags faktisch schon der Topfname – daraus werden die Töpfe gebildet,
+ * ohne dass etwas verloren geht.
+ */
+function migratePots(st) {
+  if (Array.isArray(st.pots) && st.pots.length) return st;
+  st.pots = [];
+  const byName = new Map();
+  st.savings.forEach(e => {
+    if (e.potId != null) return;
+    const name = (e.title || "Erspartes").trim() || "Erspartes";
+    if (!byName.has(name)) {
+      const pot = { id: st.nextId++, name, color: byName.size % POT_COLORS, targetCents: null };
+      byName.set(name, pot);
+      st.pots.push(pot);
+    }
+    e.potId = byName.get(name).id;
+    e.title = "";
+  });
+  if (!st.pots.length) {
+    st.pots.push({ id: st.nextId++, name: "Erspartes", color: 0, targetCents: null });
+  }
+  return st;
 }
 
 /**
@@ -540,7 +595,12 @@ function load() {
     if (raw) {
       const p = JSON.parse(raw);
       if (p && Array.isArray(p.entries) && Array.isArray(p.savings)) {
-        return Object.assign(blank(), p, { tab:"month", period: p.period ?? currentPeriod(), year: p.year ?? currentYear() });
+        return migratePots(Object.assign(blank(), p, {
+          tab: "month",
+          period: p.period ?? currentPeriod(),
+          year: p.year ?? currentYear(),
+          potFilter: null
+        }));
       }
     }
   } catch (e) {
@@ -603,17 +663,29 @@ function seed() {
 
   s.nextId = id;
 
-  // Vorjahr, damit der Sparstand zu Jahresbeginn nicht bei null steht
-  for (let m = 1; m <= 12; m++) {
-    s.savings.push({ id: s.nextId++, period: periodOf(y - 1, m), title:"Tagesgeld", amountCents: 25000 });
-  }
+
+  const notgroschen = { id: s.nextId++, name:"Notgroschen",   color:0, targetCents: 500000 };
+  const etf         = { id: s.nextId++, name:"ETF-Sparplan",  color:4, targetCents: null };
+  const urlaub      = { id: s.nextId++, name:"Urlaubskasse",  color:1, targetCents: 150000 };
+  s.pots = [notgroschen, etf, urlaub];
+
+  const put = (pot, period, cents, note) =>
+    s.savings.push({ id: s.nextId++, potId: pot.id, period, title: note || "", amountCents: cents });
+
   // Nur bis zum laufenden Monat – die Prognose füllt den Rest des Jahres.
   const upTo = monthOf(currentPeriod());
   for (let m = 1; m <= upTo; m++) {
-    s.savings.push({ id: s.nextId++, period: periodOf(y, m), title:"ETF-Sparplan", amountCents: 15000 });
-    if (m !== 7) s.savings.push({ id: s.nextId++, period: periodOf(y, m), title:"Tagesgeld", amountCents: 20000 });
+    put(etf, periodOf(y, m), 15000);
+    if (m !== 7) put(notgroschen, periodOf(y, m), 12000);
+    if (m !== 7) put(urlaub, periodOf(y, m), 12000);
   }
-  if (upTo >= 7) s.savings.push({ id: s.nextId++, period: periodOf(y, 7), title:"Entnahme Urlaub", amountCents: -60000 });
+  if (upTo >= 7) put(urlaub, periodOf(y, 7), -60000, "Kroatien bezahlt");
+
+  // Vorjahr, damit der Sparstand zu Jahresbeginn nicht bei null steht
+  for (let m = 1; m <= 12; m++) {
+    put(notgroschen, periodOf(y - 1, m), 15000);
+    put(etf, periodOf(y - 1, m), 10000);
+  }
 
   return s;
 }
@@ -678,11 +750,23 @@ const monthState = () => buildMonthState(state.period, entriesFor(state.period),
 const yearState = () => buildYearState(state.year,
   state.entries.filter(e => e.startPeriod <= lastOfYear(state.year) && (e.endPeriod === null || e.endPeriod >= firstOfYear(state.year))));
 
+const potsById = () => new Map(state.pots.map(p => [p.id, p]));
+const potOf = id => state.pots.find(p => p.id === id) || null;
+
+/** Alle Sparbuchungen, oder nur die des gewählten Topfes. */
+const visibleSavings = () =>
+  state.potFilter === null ? state.savings : state.savings.filter(e => e.potId === state.potFilter);
+
+/** Inhalt eines Topfes über die gesamte Zeit. */
+const potBalance = potId =>
+  state.savings.filter(e => e.potId === potId).reduce((sum, e) => sum + e.amountCents, 0);
+
 const savingsState = () => {
+  const shown = visibleSavings();
   const base = buildSavingsState(state.year,
-    state.savings.filter(e => e.period >= firstOfYear(state.year) && e.period <= lastOfYear(state.year)),
-    state.savings.filter(e => e.period < firstOfYear(state.year)).reduce((s, e) => s + e.amountCents, 0));
-  base.forecast = buildSavingsForecast(state.year, state.savings);
+    shown.filter(e => e.period >= firstOfYear(state.year) && e.period <= lastOfYear(state.year)),
+    shown.filter(e => e.period < firstOfYear(state.year)).reduce((s, e) => s + e.amountCents, 0));
+  base.forecast = buildSavingsForecast(state.year, shown);
   return base;
 };
 
@@ -876,8 +960,9 @@ function renderSavings() {
   const s = savingsState();
   let h = switcherHTML(String(s.year), "Erspartes", false);
 
+  h += potFilterHTML();
   h += `<div class="card hero">
-    <div class="lbl">Gespart in ${s.year}</div>
+    <div class="lbl">${state.potFilter === null ? "Gespart in " + s.year : esc(potOf(state.potFilter)?.name ?? "") + " · " + s.year}</div>
     <div class="rest num ${s.yearTotalCents < 0 ? "neg" : ""}">${fmtSigned(s.yearTotalCents)}</div>
     <hr>
     <div class="duo">
@@ -902,6 +987,8 @@ function renderSavings() {
     </div>
   </div>`;
 
+  if (state.potFilter === null) h += potsCardHTML();
+
   h += `<div class="card chartcard">
     <h3>Entwicklung ${s.year}</h3>
     <div class="sub">Zwei Skalen, eine Monatsachse – die Sparrate liegt in Hundertern, der Gesamtstand in Tausendern.</div>
@@ -924,15 +1011,21 @@ function renderSavings() {
           <span>Gesamtstand: <span class="num">${fmt(mo.runningBalanceCents)}</span></span>
         </div>
         <div class="a num" style="${mo.netCents < 0 ? "color:var(--critical)" : (mo.netCents === 0 ? "color:var(--ink-3)" : "")}">${mo.netCents === 0 ? "–" : fmtSigned(mo.netCents)}</div>
-        <button class="iconbtn" style="margin-left:8px;width:30px;height:30px" type="button" data-addsav="${mo.period}" aria-label="Sparbetrag in ${esc(monthName(mo.period))} hinzufügen">
+        <button class="iconbtn" style="margin-left:8px;width:30px;height:30px" type="button" data-addsav="${mo.period}" aria-label="In ${esc(monthName(mo.period))} einzahlen">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
-      ${mo.entries.length ? `<div class="rows">${mo.entries.map(e => `
-        <button class="row" type="button" data-sav="${e.id}">
-          <span class="t"><b>${esc(e.title)}</b></span>
+      ${mo.entries.length ? `<div class="rows">${mo.entries.map(e => {
+        const pot = potOf(e.potId);
+        return `<button class="row" type="button" data-sav="${e.id}">
+          <span class="dot" style="background:${potColor(pot)}"></span>
+          <span class="t">
+            <b>${esc(pot ? pot.name : "Ohne Topf")}</b>
+            ${e.title ? `<span class="meta">${esc(e.title)}</span>` : ""}
+          </span>
           <span class="a num" style="${e.amountCents < 0 ? "color:var(--critical)" : ""}">${fmtSigned(e.amountCents)}</span>
-        </button>`).join("")}</div>` : ""}
+        </button>`;
+      }).join("")}</div>` : ""}
     </div>`).join("");
 
   h += `<p class="hint">Erspartes wird getrennt geführt und beeinflusst weder Einnahmen noch Ausgaben
@@ -940,6 +1033,57 @@ function renderSavings() {
 
   view.innerHTML = h;
   drawSavingsChart(document.getElementById("savChart"), s);
+}
+
+/** Filterleiste: alle Töpfe oder einer davon. */
+function potFilterHTML() {
+  if (!state.pots.length) return "";
+  return `<div class="potfilter" role="group" aria-label="Topf auswählen">
+    <button type="button" data-pot-filter="" aria-pressed="${state.potFilter === null}">Alle Töpfe</button>
+    ${state.pots.map(pot => `
+      <button type="button" data-pot-filter="${pot.id}" aria-pressed="${state.potFilter === pot.id}">
+        <i class="dot" style="background:${potColor(pot)}"></i>${esc(pot.name)}
+      </button>`).join("")}
+    <button type="button" class="add" data-pot-new aria-label="Neuen Topf anlegen">+ Topf</button>
+  </div>`;
+}
+
+/** Übersicht aller Töpfe mit Aufteilung, Stand und – falls gesetzt – Ziel. */
+function potsCardHTML() {
+  if (!state.pots.length) return "";
+  const rows = state.pots.map(pot => ({ pot, balance: potBalance(pot.id) }));
+  const positive = rows.filter(r => r.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+  const total = rows.reduce((sum, r) => sum + r.balance, 0);
+
+  return `<div class="card" style="margin-top:12px">
+    <div class="cathead">
+      <div class="t">
+        <b>Aufteilung</b>
+        <span>${rows.length} ${rows.length === 1 ? "Topf" : "Töpfe"} · gesamt <span class="num">${fmt(total)}</span></span>
+      </div>
+    </div>
+    ${positive > 0 ? `<div class="stack-bar" role="img" aria-label="Aufteilung des Ersparten auf die Töpfe">
+      ${rows.filter(r => r.balance > 0).map(r =>
+        `<i style="flex:${r.balance};background:${potColor(r.pot)}" title="${esc(r.pot.name)}"></i>`).join("")}
+    </div>` : ""}
+    <div class="rows">
+      ${rows.map(({ pot, balance }) => {
+        const share = positive > 0 && balance > 0 ? Math.round(balance / positive * 100) : 0;
+        const reached = pot.targetCents ? Math.max(0, Math.min(100, Math.round(balance / pot.targetCents * 100))) : null;
+        return `<button class="row" type="button" data-pot-edit="${pot.id}">
+          <span class="dot" style="background:${potColor(pot)}"></span>
+          <span class="t">
+            <b>${esc(pot.name)}</b>
+            ${pot.targetCents
+              ? `<span class="meta">Ziel <span class="num">${fmt(pot.targetCents)}</span> · ${reached} % erreicht</span>
+                 <span class="potbar"><i style="width:${reached}%;background:${potColor(pot)}"></i></span>`
+              : `<span class="meta">${share} % des Ersparten</span>`}
+          </span>
+          <span class="a num" style="${balance < 0 ? "color:var(--critical)" : ""}">${fmt(balance)}</span>
+        </button>`;
+      }).join("")}
+    </div>
+  </div>`;
 }
 
 function forecastCardHTML(s) {
@@ -1376,24 +1520,38 @@ function entrySheet(existing, initialType) {
 }
 
 /* ---------------------------------------------------------- Sparbetrag */
-function savingsSheet(period, existing) {
+function savingsSheet(period, existing, keep) {
   sheet.innerHTML = "";
+  if (!state.pots.length) {
+    state.pots.push({ id: nextId(), name: "Erspartes", color: 0, targetCents: null });
+    save();
+  }
+  let potId = (keep && keep.potId) ? keep.potId
+            : existing ? existing.potId
+            : (state.potFilter !== null ? state.potFilter : state.pots[0].id);
   let showErr = false;
 
   function paint() {
-    const title = sheet.querySelector("#f-title") ? sheet.querySelector("#f-title").value : (existing ? existing.title : "");
-    const amount = sheet.querySelector("#f-amount") ? sheet.querySelector("#f-amount").value : (existing ? fmtInput(existing.amountCents) : "");
+    const title = sheet.querySelector("#f-title") ? sheet.querySelector("#f-title").value
+                : (keep ? keep.title : existing ? existing.title : "") || "";
+    const amount = sheet.querySelector("#f-amount") ? sheet.querySelector("#f-amount").value
+                 : (keep ? keep.amount : existing ? fmtInput(existing.amountCents) : "") || "";
     const cents = parseAmount(amount);
-    const ok = title.trim().length > 0 && cents !== null && cents !== 0;
+    const ok = cents !== null && cents !== 0 && potOf(potId);
 
     openSheetKeepFocus(`
-      <h2>${existing ? "Sparbetrag bearbeiten" : "Sparbetrag hinzufügen"}</h2>
+      <h2>${existing ? "Buchung bearbeiten" : "Geld einzahlen"}</h2>
       <div class="when">${esc(periodLabel(period))}</div>
 
       <div class="field">
-        <label for="f-title">Bezeichnung</label>
-        <input type="text" id="f-title" value="${esc(title)}" placeholder="z. B. Tagesgeld" autocomplete="off"
-               aria-invalid="${showErr && !title.trim()}">
+        <label id="lbl-pot">Topf</label>
+        <div class="chips" role="group" aria-labelledby="lbl-pot">
+          ${state.pots.map(pot => `
+            <button type="button" data-pot="${pot.id}" aria-pressed="${potId === pot.id}">
+              <i class="dot" style="background:${potColor(pot)}"></i>${esc(pot.name)}
+            </button>`).join("")}
+          <button type="button" class="ghost" data-pot-new>+ Neuer Topf</button>
+        </div>
       </div>
 
       <div class="field">
@@ -1402,12 +1560,17 @@ function savingsSheet(period, existing) {
                aria-invalid="${showErr && (cents === null || cents === 0)}">
       </div>
 
-      <p class="hint" style="margin:0 0 4px">Negative Beträge gelten als Entnahme. Erspartes wird nicht mit
-      Einnahmen oder Ausgaben verrechnet.</p>
+      <div class="field">
+        <label for="f-title">Notiz <span style="text-transform:none;letter-spacing:0;font-weight:400">(freiwillig)</span></label>
+        <input type="text" id="f-title" value="${esc(title)}" placeholder="z. B. Sonderzahlung" autocomplete="off">
+      </div>
 
-      ${showErr && !ok ? `<p class="err">Bitte eine Bezeichnung und einen Betrag ungleich 0 eingeben.</p>` : ""}
+      <p class="hint" style="margin:0 0 4px">Negative Beträge gelten als Entnahme aus dem Topf. Erspartes wird
+      nicht mit Einnahmen oder Ausgaben verrechnet.</p>
 
-      ${existing ? `<div class="destructive"><button type="button" class="danger" data-del>Löschen</button></div>` : ""}
+      ${showErr && !ok ? `<p class="err">Bitte einen Topf wählen und einen Betrag ungleich 0 eingeben.</p>` : ""}
+
+      ${existing ? `<div class="destructive"><button type="button" class="danger" data-del>Buchung löschen</button></div>` : ""}
 
       <div class="actions">
         <button type="button" class="btn" data-cancel>Abbrechen</button>
@@ -1420,9 +1583,9 @@ function savingsSheet(period, existing) {
   function commit() {
     const title = sheet.querySelector("#f-title").value.trim();
     const cents = parseAmount(sheet.querySelector("#f-amount").value);
-    if (!title || cents === null || cents === 0) { showErr = true; paint(); return; }
-    if (existing) { Object.assign(existing, { title, amountCents: cents }); announce("Sparbetrag aktualisiert."); }
-    else { state.savings.push({ id: nextId(), period, title, amountCents: cents }); announce("Sparbetrag gespeichert."); }
+    if (cents === null || cents === 0 || !potOf(potId)) { showErr = true; paint(); return; }
+    if (existing) { Object.assign(existing, { potId, title, amountCents: cents }); announce("Buchung aktualisiert."); }
+    else { state.savings.push({ id: nextId(), potId, period, title, amountCents: cents }); announce("Buchung gespeichert."); }
     state.demo = false;
     persistAndRender();
     closeSheet();
@@ -1431,11 +1594,150 @@ function savingsSheet(period, existing) {
   sheetDelegate = ev => {
     const t = ev.target.closest("button");
     if (!t) return;
-    if (t.hasAttribute("data-cancel")) closeSheet();
+    if (t.dataset.pot) { potId = Number(t.dataset.pot); paint(); }
+    else if (t.hasAttribute("data-pot-new")) {
+      // Betrag und Notiz merken, damit der Umweg über den Topf nichts kostet.
+      const held = {
+        amount: sheet.querySelector("#f-amount").value,
+        title: sheet.querySelector("#f-title").value
+      };
+      potSheet(null, created => savingsSheet(period, existing, Object.assign({}, held, { potId: created.id })));
+    }
+    else if (t.hasAttribute("data-cancel")) closeSheet();
     else if (t.hasAttribute("data-del")) {
       state.savings = state.savings.filter(e => e.id !== existing.id);
-      state.demo = false; persistAndRender(); closeSheet(); announce("Sparbetrag gelöscht.");
+      state.demo = false; persistAndRender(); closeSheet(); announce("Buchung gelöscht.");
     }
+  };
+
+  paint();
+}
+
+/* ------------------------------------------------------------ Spartöpfe */
+/**
+ * Anlegen und Ändern eines Topfes. [onCreated] wird nur beim Anlegen
+ * aufgerufen, damit der Aufrufer zu seiner Eingabe zurückkehren kann.
+ */
+function potSheet(existing, onCreated) {
+  sheet.innerHTML = "";
+  let color = existing ? existing.color : state.pots.length % POT_COLORS;
+  let hasTarget = !!(existing && existing.targetCents);
+  let moveTo = null;
+  let showErr = false;
+
+  const bookings = existing ? state.savings.filter(e => e.potId === existing.id) : [];
+  const others = existing ? state.pots.filter(p => p.id !== existing.id) : [];
+
+  function paint() {
+    const name = sheet.querySelector("#f-name") ? sheet.querySelector("#f-name").value : (existing ? existing.name : "");
+    const target = sheet.querySelector("#f-target")
+      ? sheet.querySelector("#f-target").value
+      : (existing && existing.targetCents ? fmtInput(existing.targetCents) : "");
+
+    openSheetKeepFocus(`
+      <h2>${existing ? "Topf bearbeiten" : "Neuer Topf"}</h2>
+      <div class="when">${existing
+        ? `Enthält <span class="num">${fmt(potBalance(existing.id))}</span> aus ${bookings.length} ${bookings.length === 1 ? "Buchung" : "Buchungen"}`
+        : "Zum Beispiel Notgroschen, Urlaubskasse oder Neues Auto"}</div>
+
+      <div class="field">
+        <label for="f-name">Name</label>
+        <input type="text" id="f-name" value="${esc(name)}" placeholder="z. B. Notgroschen" autocomplete="off"
+               aria-invalid="${showErr && !name.trim()}">
+      </div>
+
+      <div class="field">
+        <label id="lbl-color">Farbe</label>
+        <div class="chips colors" role="group" aria-labelledby="lbl-color">
+          ${Array.from({ length: POT_COLORS }, (_, i) => `
+            <button type="button" data-color="${i}" aria-pressed="${color === i}" aria-label="Farbe ${i + 1}">
+              <i class="swatch" style="background:var(--pot-${i})"></i>
+            </button>`).join("")}
+        </div>
+      </div>
+
+      <div class="toggle">
+        <div class="t">
+          <b>Sparziel</b>
+          <span>${hasTarget ? "Zeigt den Fortschritt zum Ziel" : "Ohne Ziel – der Topf sammelt einfach"}</span>
+        </div>
+        <button type="button" data-target-toggle role="switch" aria-checked="${hasTarget}" aria-pressed="${hasTarget}" aria-label="Sparziel"></button>
+      </div>
+
+      ${hasTarget ? `<div class="field" style="margin-top:10px">
+        <label for="f-target">Zielbetrag in Euro</label>
+        <input type="text" id="f-target" class="num" inputmode="decimal" value="${esc(target)}" placeholder="3.000" autocomplete="off"
+               aria-invalid="${showErr && hasTarget && !(parseAmount(target) > 0)}">
+      </div>` : ""}
+
+      ${showErr ? `<p class="err">Bitte einen Namen angeben${hasTarget ? " und ein Ziel größer als 0" : ""}.</p>` : ""}
+
+      ${existing && state.pots.length > 1 ? `<div class="destructive">
+        ${bookings.length ? `
+          <p class="hint" style="margin:0 0 6px">Beim Löschen ${bookings.length === 1 ? "die Buchung" : "die " + bookings.length + " Buchungen"} verschieben nach:</p>
+          <div class="chips" style="margin-bottom:8px">
+            ${others.map(p => `<button type="button" data-move="${p.id}" aria-pressed="${moveTo === p.id}">
+              <i class="dot" style="background:${potColor(p)}"></i>${esc(p.name)}</button>`).join("")}
+            <button type="button" data-move="0" aria-pressed="${moveTo === 0}">Mit löschen</button>
+          </div>` : ""}
+        <button type="button" class="danger" data-del>Topf löschen</button>
+      </div>` : ""}
+      ${existing && state.pots.length === 1 ? `<p class="hint" style="margin-top:14px">Der letzte Topf lässt sich nicht löschen.</p>` : ""}
+
+      <div class="actions">
+        <button type="button" class="btn" data-cancel>Abbrechen</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn primary">Speichern</button>
+      </div>
+    `, commit);
+  }
+
+  function commit() {
+    const name = sheet.querySelector("#f-name").value.trim();
+    const targetField = sheet.querySelector("#f-target");
+    const target = hasTarget ? parseAmount(targetField ? targetField.value : "") : null;
+    if (!name || (hasTarget && !(target > 0))) { showErr = true; paint(); return; }
+
+    if (existing) {
+      Object.assign(existing, { name, color, targetCents: hasTarget ? target : null });
+      announce("Topf gespeichert.");
+      state.demo = false;
+      persistAndRender();
+      closeSheet();
+    } else {
+      const pot = { id: nextId(), name, color, targetCents: hasTarget ? target : null };
+      state.pots.push(pot);
+      state.demo = false;
+      save();
+      announce("Topf angelegt.");
+      if (onCreated) onCreated(pot); else { render(); closeSheet(); }
+    }
+  }
+
+  sheetDelegate = ev => {
+    const t = ev.target.closest("button");
+    if (!t) return;
+    if (t.dataset.color !== undefined && t.dataset.color !== "") { color = Number(t.dataset.color); paint(); }
+    else if (t.hasAttribute("data-target-toggle")) { hasTarget = !hasTarget; paint(); }
+    else if (t.dataset.move !== undefined && t.dataset.move !== "") { moveTo = Number(t.dataset.move); paint(); }
+    else if (t.hasAttribute("data-del")) {
+      if (bookings.length && moveTo === null) {
+        showErr = false;
+        moveTo = 0;
+        paint();
+        announce("Bitte zuerst wählen, was mit den Buchungen passieren soll.");
+        return;
+      }
+      if (moveTo) bookings.forEach(b => { b.potId = moveTo; });
+      else state.savings = state.savings.filter(e => e.potId !== existing.id);
+      state.pots = state.pots.filter(p => p.id !== existing.id);
+      if (state.potFilter === existing.id) state.potFilter = null;
+      state.demo = false;
+      persistAndRender();
+      closeSheet();
+      announce("Topf gelöscht.");
+    }
+    else if (t.hasAttribute("data-cancel")) closeSheet();
   };
 
   paint();
@@ -1654,7 +1956,7 @@ function render() {
     fab.hidden = true;
   } else {
     fab.hidden = false;
-    fabText.textContent = state.tab === "month" ? "Posten" : "Sparbetrag";
+    fabText.textContent = state.tab === "month" ? "Posten" : "Einzahlen";
   }
   view.scrollTop = 0;
 }
@@ -1694,6 +1996,17 @@ view.addEventListener("click", ev => {
     if (e) savingsSheet(e.period, e);
     return;
   }
+
+  const potFilter = ev.target.closest("[data-pot-filter]");
+  if (potFilter) {
+    const raw = potFilter.dataset.potFilter;
+    state.potFilter = raw === "" ? null : Number(raw);
+    persistAndRender();
+    return;
+  }
+  if (ev.target.closest("[data-pot-new]")) { potSheet(null, () => { render(); closeSheet(); }); return; }
+  const potEdit = ev.target.closest("[data-pot-edit]");
+  if (potEdit) { potSheet(potOf(Number(potEdit.dataset.potEdit)), null); return; }
 
   const addSav = ev.target.closest("[data-addsav]");
   if (addSav) { savingsSheet(Number(addSav.dataset.addsav), null); return; }

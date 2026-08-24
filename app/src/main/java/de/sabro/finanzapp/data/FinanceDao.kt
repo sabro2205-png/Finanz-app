@@ -49,6 +49,30 @@ interface FinanceDao {
     @Query("SELECT COALESCE(SUM(amountCents), 0) FROM savings WHERE period < :period")
     fun savingsBalanceBefore(period: Int): Flow<Long>
 
+    @Query("SELECT * FROM pots ORDER BY position ASC, id ASC")
+    fun pots(): Flow<List<SavingsPot>>
+
+    @Query("SELECT COUNT(*) FROM pots")
+    suspend fun potCount(): Int
+
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM pots")
+    suspend fun nextPotPosition(): Int
+
+    @Insert
+    suspend fun insertPot(pot: SavingsPot): Long
+
+    @Update
+    suspend fun updatePot(pot: SavingsPot)
+
+    @Delete
+    suspend fun deletePot(pot: SavingsPot)
+
+    @Query("UPDATE savings SET potId = :toPotId WHERE potId = :fromPotId")
+    suspend fun moveSavings(fromPotId: Long, toPotId: Long)
+
+    @Query("DELETE FROM savings WHERE potId = :potId")
+    suspend fun deleteSavingsOfPot(potId: Long)
+
     @Insert
     suspend fun insertSaving(entry: SavingsEntry): Long
 

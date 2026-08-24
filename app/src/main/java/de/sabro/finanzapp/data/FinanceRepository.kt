@@ -33,6 +33,35 @@ class FinanceRepository(private val dao: FinanceDao) {
 
     fun allSavings(): Flow<List<SavingsEntry>> = dao.allSavings()
 
+    fun pots(): Flow<List<SavingsPot>> = dao.pots()
+
+    /** Legt beim ersten Start einen Topf an, damit immer eingezahlt werden kann. */
+    suspend fun ensureAtLeastOnePot(): Long? =
+        if (dao.potCount() > 0) null
+        else dao.insertPot(SavingsPot(name = "Erspartes", colorIndex = 0, position = 0))
+
+    suspend fun addPot(name: String, colorIndex: Int, targetCents: Long?): Long =
+        dao.insertPot(
+            SavingsPot(
+                name = name,
+                colorIndex = colorIndex,
+                targetCents = targetCents,
+                position = dao.nextPotPosition()
+            )
+        )
+
+    suspend fun updatePot(pot: SavingsPot) { dao.updatePot(pot) }
+
+    /**
+     * Loescht einen Topf. Ist [moveToPotId] gesetzt, wandern seine Buchungen
+     * dorthin, sonst werden sie mitgeloescht.
+     */
+    suspend fun deletePot(pot: SavingsPot, moveToPotId: Long?) {
+        if (moveToPotId != null) dao.moveSavings(pot.id, moveToPotId)
+        else dao.deleteSavingsOfPot(pot.id)
+        dao.deletePot(pot)
+    }
+
     suspend fun addSaving(entry: SavingsEntry) { dao.insertSaving(entry) }
 
     suspend fun updateSaving(entry: SavingsEntry) { dao.updateSaving(entry) }

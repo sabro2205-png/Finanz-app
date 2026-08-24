@@ -10,6 +10,7 @@ import de.sabro.finanzapp.data.ExpenseCategory
 import de.sabro.finanzapp.data.FinanceEntry
 import de.sabro.finanzapp.data.FinanceRepository
 import de.sabro.finanzapp.data.SavingsEntry
+import de.sabro.finanzapp.data.SavingsPot
 import de.sabro.finanzapp.domain.FinanceCalculator
 import de.sabro.finanzapp.domain.MonthUiState
 import de.sabro.finanzapp.domain.SavingsUiState
@@ -54,20 +55,24 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), YearUiState())
 
-    val savingsState: StateFlow<SavingsUiState> = _selectedYear
-        .flatMapLatest { year ->
-            val from = Period.firstOfYear(year)
-            val to = Period.lastOfYear(year)
-            combine(
-                repo.savingsForRange(from, to),
-                repo.savingsBalanceBefore(from),
-                repo.allSavings()
-            ) { entries, startBalance, all ->
-                // Die Prognose braucht die gesamte Historie, nicht nur das Jahr.
-                FinanceCalculator.buildSavingsState(year, entries, startBalance, all)
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SavingsUiState())
+    private val _potFilter = MutableStateFlow<Long?>(null)
+    val potFilter: StateFlow<Long?> = _potFilter.asStateFlow()
+
+    val savingsState: StateFlow<SavingsUiState> = combine(
+        _selectedYear, _potFilter, repo.allSavings(), repo.pots()
+    ) { year, filter, all, pots ->
+        val shown = if (filter == null) all else all.filter { it.potId == filter }
+        val from = Period.firstOfYear(year)
+        val to = Period.lastOfYear(year)
+        FinanceCalculator.buildSavingsState(
+            year = year,
+            entries = shown.filter { it.period in from..to },
+            startBalanceCents = shown.filter { it.period < from }.sumOf { it.amountCents },
+            allEntries = shown,
+            pots = FinanceCalculator.buildPotSummaries(pots, all),
+            potFilter = filter
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SavingsUiState())
 
     // ------------------------------------------------------------ Navigation
 
@@ -80,6 +85,8 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
     fun showPreviousYear() { _selectedYear.value -= 1 }
 
     fun showNextYear() { _selectedYear.value += 1 }
+
+    fun showPot(potId: Long?) { _potFilter.value = potId }
 
     // ------------------------------------------------------------ Bearbeiten
 
@@ -137,13 +144,38 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
         viewModelScope.launch { repo.endEntryBefore(entry, period) }
     }
 
-    fun saveSaving(existing: SavingsEntry?, period: Int, title: String, amountCents: Long) {
+    fun saveSaving(existing: SavingsEntry?, potId: Long, period: Int, title: String, amountCents: Long) {
         viewModelScope.launch {
             if (existing == null) {
-                repo.addSaving(SavingsEntry(period = period, title = title, amountCents = amountCents))
+                repo.addSaving(
+                    SavingsEntry(potId = potId, period = period, title = title, amountCents = amountCents)
+                )
             } else {
-                repo.updateSaving(existing.copy(period = period, title = title, amountCents = amountCents))
+                repo.updateSaving(
+                    existing.copy(potId = potId, period = period, title = title, amountCents = amountCents)
+                )
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- Toepfe
+
+    init {
+        // Ohne Topf laesst sich nichts einzahlen.
+        viewModelScope.launch { repo.ensureAtLeastOnePot() }
+    }
+
+    fun savePot(existing: SavingsPot?, name: String, colorIndex: Int, targetCents: Long?) {
+        viewModelScope.launch {
+            if (existing == null) repo.addPot(name, colorIndex, targetCents)
+            else repo.updatePot(existing.copy(name = name, colorIndex = colorIndex, targetCents = targetCents))
+        }
+    }
+
+    fun deletePot(pot: SavingsPot, moveToPotId: Long?) {
+        viewModelScope.launch {
+            if (_potFilter.value == pot.id) _potFilter.value = null
+            repo.deletePot(pot, moveToPotId)
         }
     }
 

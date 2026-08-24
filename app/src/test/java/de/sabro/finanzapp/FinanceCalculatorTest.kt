@@ -184,9 +184,9 @@ class FinanceCalculatorTest {
     @Test
     fun `Erspartes wird ueber das Jahr kumuliert`() {
         val entries = listOf(
-            SavingsEntry(period = jan, title = "Tagesgeld", amountCents = 20_000),
-            SavingsEntry(period = jan, title = "ETF", amountCents = 10_000),
-            SavingsEntry(period = mar, title = "Tagesgeld", amountCents = 15_000)
+            SavingsEntry(potId = 1L, period = jan, title = "Tagesgeld", amountCents = 20_000),
+            SavingsEntry(potId = 1L, period = jan, title = "ETF", amountCents = 10_000),
+            SavingsEntry(potId = 1L, period = mar, title = "Tagesgeld", amountCents = 15_000)
         )
 
         val state = FinanceCalculator.buildSavingsState(2026, entries, startBalanceCents = 100_000)
@@ -207,8 +207,8 @@ class FinanceCalculatorTest {
     @Test
     fun `Entnahmen senken den Sparstand`() {
         val entries = listOf(
-            SavingsEntry(period = jan, title = "Sparen", amountCents = 50_000),
-            SavingsEntry(period = feb, title = "Urlaub", amountCents = -80_000)
+            SavingsEntry(potId = 1L, period = jan, title = "Sparen", amountCents = 50_000),
+            SavingsEntry(potId = 1L, period = feb, title = "Urlaub", amountCents = -80_000)
         )
 
         val state = FinanceCalculator.buildSavingsState(2026, entries, startBalanceCents = 0)
@@ -227,7 +227,7 @@ class FinanceCalculatorTest {
         val month = FinanceCalculator.buildMonthState(jan, entries, emptyList())
 
         // Sparbetraege liegen in einer eigenen Tabelle und gehen in keine Summe ein.
-        FinanceCalculator.buildSavingsState(2026, listOf(SavingsEntry(period = jan, title = "ETF", amountCents = 99_999)), 0)
+        FinanceCalculator.buildSavingsState(2026, listOf(SavingsEntry(potId = 1L, period = jan, title = "ETF", amountCents = 99_999)), 0)
 
         assertEquals(300_000L, month.incomeTotal)
         assertEquals(100_000L, month.expenseTotal)

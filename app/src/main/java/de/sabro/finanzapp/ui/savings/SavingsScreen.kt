@@ -39,6 +39,19 @@ import de.sabro.finanzapp.ui.theme.savingsColor
 import de.sabro.finanzapp.util.Period
 import de.sabro.finanzapp.util.formatMoney
 import de.sabro.finanzapp.util.formatMoneySigned
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.remember
+import de.sabro.finanzapp.data.SavingsPot
+import de.sabro.finanzapp.domain.PotSummary
+import de.sabro.finanzapp.ui.components.ShareBar
+import de.sabro.finanzapp.ui.theme.PotColors
 
 @Composable
 fun SavingsScreen(
@@ -47,9 +60,14 @@ fun SavingsScreen(
     onNextYear: () -> Unit,
     onAddForMonth: (Int) -> Unit,
     onEntryClick: (SavingsEntry) -> Unit,
+    onSelectPot: (Long?) -> Unit,
+    onEditPot: (PotSummary) -> Unit,
+    onNewPot: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier
 ) {
+    val potsById = remember(state.pots) { state.pots.associate { it.pot.id to it.pot } }
+
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
@@ -69,7 +87,13 @@ fun SavingsScreen(
             )
         }
 
+        item { PotFilterRow(state, onSelectPot, onNewPot) }
+
         item { SavingsSummaryCard(state) }
+
+        if (state.potFilter == null && state.pots.isNotEmpty()) {
+            item { PotsCard(state, onEditPot) }
+        }
 
         item {
             Card(
@@ -111,6 +135,7 @@ fun SavingsScreen(
             item(key = "savings-${month.period}") {
                 SavingsMonthCard(
                     month = month,
+                    potsById = potsById,
                     onAdd = { onAddForMonth(month.period) },
                     onEntryClick = onEntryClick
                 )
@@ -137,7 +162,8 @@ private fun SavingsSummaryCard(state: SavingsUiState) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(
-                text = "Gespart in ${state.year}",
+                text = state.filteredPot?.let { "${it.pot.name} · ${state.year}" }
+                    ?: "Gespart in ${state.year}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -188,6 +214,7 @@ private fun SavingsSummaryCard(state: SavingsUiState) {
 @Composable
 private fun SavingsMonthCard(
     month: SavingsMonth,
+    potsById: Map<Long, SavingsPot>,
     onAdd: () -> Unit,
     onEntryClick: (SavingsEntry) -> Unit
 ) {
@@ -227,6 +254,7 @@ private fun SavingsMonthCard(
             }
 
             month.entries.forEach { entry ->
+                val pot = potsById[entry.potId]
                 HorizontalDivider(Modifier.padding(horizontal = 12.dp))
                 Row(
                     modifier = Modifier
@@ -235,13 +263,32 @@ private fun SavingsMonthCard(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = entry.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                    Box(
+                        Modifier
+                            .size(9.dp)
+                            .background(
+                                PotColors[(pot?.colorIndex ?: 0) % PotColors.size],
+                                RoundedCornerShape(3.dp)
+                            )
                     )
+                    Spacer(Modifier.size(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = pot?.name ?: "Ohne Topf",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (entry.title.isNotBlank()) {
+                            Text(
+                                text = entry.title,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                     Spacer(Modifier.size(8.dp))
                     Text(
                         text = formatMoneySigned(entry.amountCents),
@@ -346,5 +393,154 @@ private fun ForecastCard(state: SavingsUiState) {
                 modifier = Modifier.padding(top = 10.dp)
             )
         }
+    }
+}
+
+/** Alle Töpfe oder einer davon. */
+@Composable
+private fun PotFilterRow(
+    state: SavingsUiState,
+    onSelectPot: (Long?) -> Unit,
+    onNewPot: () -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            FilterChip(
+                selected = state.potFilter == null,
+                onClick = { onSelectPot(null) },
+                label = { Text("Alle Töpfe") }
+            )
+        }
+        items(state.pots, key = { it.pot.id }) { summary ->
+            FilterChip(
+                selected = state.potFilter == summary.pot.id,
+                onClick = { onSelectPot(summary.pot.id) },
+                label = { Text(summary.pot.name) },
+                leadingIcon = {
+                    Box(
+                        Modifier
+                            .size(10.dp)
+                            .background(
+                                PotColors[summary.pot.colorIndex % PotColors.size],
+                                RoundedCornerShape(3.dp)
+                            )
+                    )
+                }
+            )
+        }
+        item {
+            AssistChip(onClick = onNewPot, label = { Text("+ Topf") })
+        }
+    }
+}
+
+/** Aufteilung des Ersparten auf die Töpfe, mit Ziel-Fortschritt falls gesetzt. */
+@Composable
+private fun PotsCard(state: SavingsUiState, onEditPot: (PotSummary) -> Unit) {
+    val positiveTotal = state.pots.sumOf { it.balanceCents.coerceAtLeast(0L) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp)) {
+                Text("Aufteilung", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "${state.pots.size} ${if (state.pots.size == 1) "Topf" else "Töpfe"} · " +
+                        "gesamt ${formatMoney(state.potTotalCents)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (positiveTotal > 0L) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp)
+                        .height(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    state.pots.filter { it.balanceCents > 0L }.forEach { summary ->
+                        Box(
+                            Modifier
+                                .weight(summary.balanceCents.toFloat())
+                                .fillMaxHeight()
+                                .background(
+                                    PotColors[summary.pot.colorIndex % PotColors.size],
+                                    RoundedCornerShape(3.dp)
+                                )
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            state.pots.forEachIndexed { index, summary ->
+                if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 14.dp))
+                PotRow(summary, onClick = { onEditPot(summary) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PotRow(summary: PotSummary, onClick: () -> Unit) {
+    val color = PotColors[summary.pot.colorIndex % PotColors.size]
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(10.dp)
+                .background(color, RoundedCornerShape(3.dp))
+        )
+        Spacer(Modifier.size(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = summary.pot.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val target = summary.pot.targetCents
+            if (target != null) {
+                Text(
+                    text = "Ziel ${formatMoney(target)} · ${summary.targetReachedPercent} % erreicht",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                ShareBar(
+                    fraction = (summary.targetReachedPercent ?: 0) / 100f,
+                    color = color,
+                    modifier = Modifier.fillMaxWidth(0.6f),
+                    height = 5.dp
+                )
+            } else {
+                Text(
+                    text = "${summary.sharePercent} % des Ersparten",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = formatMoney(summary.balanceCents),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (summary.balanceCents < 0L) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface
+        )
     }
 }

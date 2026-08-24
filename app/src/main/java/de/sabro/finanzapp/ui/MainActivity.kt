@@ -34,8 +34,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import de.sabro.finanzapp.data.EntryType
 import de.sabro.finanzapp.data.FinanceEntry
 import de.sabro.finanzapp.data.SavingsEntry
+import de.sabro.finanzapp.domain.PotSummary
 import de.sabro.finanzapp.ui.components.EntryEditorDialog
 import de.sabro.finanzapp.ui.components.MonthPickerDialog
+import de.sabro.finanzapp.ui.components.PotEditorDialog
 import de.sabro.finanzapp.ui.components.SavingsEditorDialog
 import de.sabro.finanzapp.ui.month.MonthScreen
 import de.sabro.finanzapp.ui.savings.SavingsScreen
@@ -70,6 +72,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 private sealed interface ActiveDialog {
     data class Entry(val existing: FinanceEntry?, val initialType: EntryType) : ActiveDialog
     data class Savings(val period: Int, val existing: SavingsEntry?) : ActiveDialog
+    data class Pot(val existing: PotSummary?) : ActiveDialog
     data object MonthPicker : ActiveDialog
 }
 
@@ -83,6 +86,7 @@ fun FinanzApp() {
     val yearState by viewModel.yearState.collectAsStateWithLifecycle()
     val savingsState by viewModel.savingsState.collectAsStateWithLifecycle()
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
+    val potFilter by viewModel.potFilter.collectAsStateWithLifecycle()
 
     var tab by rememberSaveable { mutableStateOf(Tab.MONTH) }
     var dialog by remember { mutableStateOf<ActiveDialog?>(null) }
@@ -157,6 +161,9 @@ fun FinanzApp() {
                 onEntryClick = { entry ->
                     dialog = ActiveDialog.Savings(period = entry.period, existing = entry)
                 },
+                onSelectPot = viewModel::showPot,
+                onEditPot = { summary -> dialog = ActiveDialog.Pot(existing = summary) },
+                onNewPot = { dialog = ActiveDialog.Pot(existing = null) },
                 contentPadding = padding,
                 modifier = Modifier.fillMaxSize()
             )
@@ -199,14 +206,37 @@ fun FinanzApp() {
         is ActiveDialog.Savings -> SavingsEditorDialog(
             period = current.period,
             existing = current.existing,
+            pots = savingsState.pots,
+            preselectedPotId = potFilter,
             onDismiss = { dialog = null },
-            onSave = { title, amount ->
-                viewModel.saveSaving(current.existing, current.period, title, amount)
+            onSave = { potId, title, amount ->
+                viewModel.saveSaving(current.existing, potId, current.period, title, amount)
                 dialog = null
             },
+            onNewPot = { dialog = ActiveDialog.Pot(existing = null) },
             onDelete = current.existing?.let { entry ->
                 {
                     viewModel.deleteSaving(entry)
+                    dialog = null
+                }
+            }
+        )
+
+        is ActiveDialog.Pot -> PotEditorDialog(
+            existing = current.existing,
+            otherPots = savingsState.pots.filter { it.pot.id != current.existing?.pot?.id },
+            bookingCount = current.existing?.let { summary ->
+                savingsState.months.sumOf { m -> m.entries.count { it.potId == summary.pot.id } }
+            } ?: 0,
+            canDelete = savingsState.pots.size > 1,
+            onDismiss = { dialog = null },
+            onSaved = { name, color, target ->
+                viewModel.savePot(current.existing?.pot, name, color, target)
+                dialog = null
+            },
+            onDelete = current.existing?.let { summary ->
+                { moveTo: Long? ->
+                    viewModel.deletePot(summary.pot, moveTo)
                     dialog = null
                 }
             }

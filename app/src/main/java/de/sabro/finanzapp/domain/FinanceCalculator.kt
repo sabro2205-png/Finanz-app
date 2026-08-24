@@ -4,6 +4,7 @@ import de.sabro.finanzapp.data.EntryType
 import de.sabro.finanzapp.data.ExpenseCategory
 import de.sabro.finanzapp.data.FinanceEntry
 import de.sabro.finanzapp.data.SavingsEntry
+import de.sabro.finanzapp.data.SavingsPot
 import de.sabro.finanzapp.util.Period
 
 data class CategoryGroup(
@@ -77,12 +78,27 @@ data class SavingsForecast(
     val available: Boolean get() = basisMonths > 0 && openMonths > 0
 }
 
+/** Ein Topf mit seinem Inhalt ueber die gesamte Zeit. */
+data class PotSummary(
+    val pot: SavingsPot,
+    val balanceCents: Long,
+    /** Anteil am gesamten Ersparten, nur positive Bestaende zaehlen. */
+    val sharePercent: Int,
+    /** null, wenn kein Ziel gesetzt ist; sonst 0..100. */
+    val targetReachedPercent: Int?
+)
+
 data class SavingsUiState(
     val year: Int = Period.currentYear(),
     val startBalanceCents: Long = 0L,
     val months: List<SavingsMonth> = emptyList(),
-    val forecast: SavingsForecast = SavingsForecast()
+    val forecast: SavingsForecast = SavingsForecast(),
+    val pots: List<PotSummary> = emptyList(),
+    /** null bedeutet: alle Toepfe zusammen. */
+    val potFilter: Long? = null
 ) {
+    val filteredPot: PotSummary? get() = pots.firstOrNull { it.pot.id == potFilter }
+    val potTotalCents: Long get() = pots.sumOf { it.balanceCents }
     val yearTotalCents: Long get() = months.sumOf { it.netCents }
     val endBalanceCents: Long get() = startBalanceCents + yearTotalCents
     val monthsWithEntries: Int get() = months.count { it.entries.isNotEmpty() }
@@ -148,12 +164,36 @@ object FinanceCalculator {
         )
     }
 
+    /**
+     * Inhalt und Anteil je Topf. Grundlage sind immer alle Buchungen, nicht
+     * nur das angezeigte Jahr – ein Topf enthaelt, was insgesamt drin ist.
+     */
+    fun buildPotSummaries(pots: List<SavingsPot>, allSavings: List<SavingsEntry>): List<PotSummary> {
+        val byPot = allSavings.groupBy { it.potId }.mapValues { (_, l) -> l.sumOf { it.amountCents } }
+        val positiveTotal = pots.sumOf { (byPot[it.id] ?: 0L).coerceAtLeast(0L) }
+        return pots.map { pot ->
+            val balance = byPot[pot.id] ?: 0L
+            PotSummary(
+                pot = pot,
+                balanceCents = balance,
+                sharePercent = if (positiveTotal <= 0L || balance <= 0L) 0
+                               else Math.round(balance.toDouble() / positiveTotal * 100).toInt(),
+                targetReachedPercent = pot.targetCents?.let { target ->
+                    if (target <= 0L) 0
+                    else Math.round(balance.toDouble() / target * 100).toInt().coerceIn(0, 100)
+                }
+            )
+        }
+    }
+
     fun buildSavingsState(
         year: Int,
         entries: List<SavingsEntry>,
         startBalanceCents: Long,
         allEntries: List<SavingsEntry> = entries,
-        today: Int = Period.current()
+        today: Int = Period.current(),
+        pots: List<PotSummary> = emptyList(),
+        potFilter: Long? = null
     ): SavingsUiState {
         var running = startBalanceCents
         val months = (1..12).map { month ->
@@ -167,7 +207,9 @@ object FinanceCalculator {
             year = year,
             startBalanceCents = startBalanceCents,
             months = months,
-            forecast = buildSavingsForecast(year, allEntries, today)
+            forecast = buildSavingsForecast(year, allEntries, today),
+            pots = pots,
+            potFilter = potFilter
         )
     }
 
