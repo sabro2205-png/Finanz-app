@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -98,8 +99,12 @@ fun GroupedYearBarChart(
 }
 
 /**
- * Sparuebersicht: Balken je Monat (positiv/negativ moeglich) plus die
- * kumulierte Entwicklung als Linie.
+ * Sparuebersicht in zwei uebereinanderliegenden Feldern mit gemeinsamer
+ * Monatsachse: oben die Sparrate je Monat, darunter der kumulierte Stand.
+ *
+ * Bewusst nicht in einem Feld: die Sparrate bewegt sich in Hundertern, der
+ * Gesamtstand in Tausendern – auf einer gemeinsamen Skala waeren die Balken
+ * nicht mehr ablesbar, zwei Achsen in einem Feld waeren irrefuehrend.
  */
 @Composable
 fun SavingsChart(
@@ -109,107 +114,99 @@ fun SavingsChart(
     negativeBarColor: Color,
     lineColor: Color,
     modifier: Modifier = Modifier,
-    height: Dp = 200.dp
+    height: Dp = 240.dp
 ) {
     val measurer = rememberTextMeasurer()
     val axisColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = TextStyle(fontSize = 9.sp, color = labelColor)
+    val captionStyle = TextStyle(fontSize = 9.sp, color = labelColor, fontWeight = FontWeight.SemiBold)
+    val areaColor = barColor.copy(alpha = 0.12f)
 
     Canvas(
         modifier
             .fillMaxWidth()
             .height(height)
     ) {
-        val bottomAxis = 16.dp.toPx()
-        val topPadding = 14.dp.toPx()
-        val leftPadding = 34.dp.toPx()
-        val chartHeight = size.height - bottomAxis - topPadding
-        val chartWidth = size.width - leftPadding
-        if (chartHeight <= 0f || chartWidth <= 0f) return@Canvas
+        val padL = 42.dp.toPx()
+        val padT = 26.dp.toPx()
+        val labelsH = 16.dp.toPx()
+        val gapH = 30.dp.toPx()
 
-        // Gemeinsame Skala fuer Balken und Linie
-        val maxValue = maxOf(
-            monthlyNet.maxOfOrNull { it } ?: 0L,
-            runningBalance.maxOfOrNull { it } ?: 0L,
-            0L
-        )
-        val minValue = minOf(
-            monthlyNet.minOfOrNull { it } ?: 0L,
-            runningBalance.minOfOrNull { it } ?: 0L,
-            0L
-        )
-        val span = (maxValue - minValue).coerceAtLeast(1L).toFloat()
+        val fieldH = (size.height - padT - labelsH - gapH) / 2f
+        val plotW = size.width - padL
+        if (fieldH <= 0f || plotW <= 0f) return@Canvas
 
-        fun yOf(value: Long): Float =
-            topPadding + chartHeight - ((value - minValue) / span) * chartHeight
+        val topOfRate = padT
+        val topOfBalance = padT + fieldH + gapH
 
-        val zeroY = yOf(0L)
+        // ---- Feld 1: Sparrate je Monat
+        val nMax = maxOf(monthlyNet.maxOrNull() ?: 0L, 0L)
+        val nMin = minOf(monthlyNet.minOrNull() ?: 0L, 0L)
+        val nSpan = (nMax - nMin).coerceAtLeast(1L).toFloat()
+        fun yRate(v: Long): Float = topOfRate + fieldH - ((v - nMin) / nSpan) * fieldH
+        val zeroY = yRate(0L)
 
-        // Nulllinie + Beschriftung der Extremwerte
-        drawLine(
-            color = axisColor,
-            start = Offset(leftPadding, zeroY),
-            end = Offset(size.width, zeroY),
-            strokeWidth = 1.dp.toPx()
-        )
-        drawText(
-            textMeasurer = measurer,
-            text = formatMoneyCompact(maxValue),
-            style = labelStyle,
-            topLeft = Offset(0f, topPadding - 4.dp.toPx())
-        )
-        if (minValue < 0L) {
-            drawText(
-                textMeasurer = measurer,
-                text = formatMoneyCompact(minValue),
-                style = labelStyle,
-                topLeft = Offset(0f, topPadding + chartHeight - 8.dp.toPx())
-            )
-        }
+        // ---- Feld 2: kumulierter Gesamtstand
+        val bMax = maxOf(runningBalance.maxOrNull() ?: 0L, 0L)
+        val bMin = minOf(runningBalance.minOrNull() ?: 0L, 0L)
+        val bSpan = (bMax - bMin).coerceAtLeast(1L).toFloat()
+        fun yBal(v: Long): Float = topOfBalance + fieldH - ((v - bMin) / bSpan) * fieldH
 
-        val slotWidth = chartWidth / 12f
-        val barWidth = (slotWidth * 0.45f).coerceAtMost(20.dp.toPx())
+        val slotWidth = plotW / 12f
+        val barWidth = (slotWidth * 0.46f).coerceAtMost(14.dp.toPx())
         val radius = androidx.compose.ui.geometry.CornerRadius(barWidth / 4f, barWidth / 4f)
 
+        // Feld 1 zeichnen
+        drawText(textMeasurer = measurer, text = "SPARRATE", style = captionStyle, topLeft = Offset(0f, topOfRate - 15.dp.toPx()))
+        drawText(textMeasurer = measurer, text = formatMoneyCompact(nMax), style = labelStyle, topLeft = Offset(0f, yRate(nMax) - 5.dp.toPx()))
+        if (nMin < 0L) {
+            drawText(textMeasurer = measurer, text = formatMoneyCompact(nMin), style = labelStyle, topLeft = Offset(0f, yRate(nMin) - 5.dp.toPx()))
+        }
+        drawLine(axisColor, Offset(padL, zeroY), Offset(size.width, zeroY), strokeWidth = 1.dp.toPx())
+
         for (i in 0 until 12) {
-            val centerX = leftPadding + slotWidth * i + slotWidth / 2f
+            val centerX = padL + slotWidth * i + slotWidth / 2f
             val value = monthlyNet.getOrElse(i) { 0L }
-            val valueY = yOf(value)
-            val top = minOf(valueY, zeroY)
-            val barHeight = abs(valueY - zeroY)
-
-            if (value != 0L) {
-                drawRoundRect(
-                    color = if (value >= 0) barColor else negativeBarColor,
-                    topLeft = Offset(centerX - barWidth / 2f, top),
-                    size = Size(barWidth, barHeight),
-                    cornerRadius = radius
-                )
-            }
-
-            if (i % 2 == 0) {
-                drawCenteredText(measurer, Period.MONTH_SHORT[i], labelStyle, centerX, topPadding + chartHeight + 3.dp.toPx())
-            }
+            if (value == 0L) continue
+            val valueY = yRate(value)
+            drawRoundRect(
+                color = if (value > 0) barColor else negativeBarColor,
+                topLeft = Offset(centerX - barWidth / 2f, minOf(valueY, zeroY)),
+                size = Size(barWidth, abs(valueY - zeroY)),
+                cornerRadius = radius
+            )
         }
 
-        // Kumulierte Entwicklung
+        // Feld 2 zeichnen
+        drawText(textMeasurer = measurer, text = "GESAMTSTAND", style = captionStyle, topLeft = Offset(0f, topOfBalance - 15.dp.toPx()))
+        drawText(textMeasurer = measurer, text = formatMoneyCompact(bMax), style = labelStyle, topLeft = Offset(0f, yBal(bMax) - 5.dp.toPx()))
+        drawLine(axisColor, Offset(padL, yBal(bMax)), Offset(size.width, yBal(bMax)), strokeWidth = 1.dp.toPx())
+        drawLine(axisColor, Offset(padL, yBal(bMin)), Offset(size.width, yBal(bMin)), strokeWidth = 1.dp.toPx())
+
         if (runningBalance.isNotEmpty()) {
-            val path = Path()
-            runningBalance.forEachIndexed { i, value ->
-                val x = leftPadding + slotWidth * i + slotWidth / 2f
-                val y = yOf(value)
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            val points = runningBalance.mapIndexed { i, v ->
+                Offset(padL + slotWidth * i + slotWidth / 2f, yBal(v))
             }
-            drawPath(
-                path = path,
-                color = lineColor,
-                style = Stroke(width = 2.dp.toPx())
-            )
-            runningBalance.forEachIndexed { i, value ->
-                val x = leftPadding + slotWidth * i + slotWidth / 2f
-                drawCircle(lineColor, radius = 2.5f.dp.toPx(), center = Offset(x, yOf(value)))
+            val area = Path().apply {
+                moveTo(points.first().x, yBal(bMin))
+                points.forEach { lineTo(it.x, it.y) }
+                lineTo(points.last().x, yBal(bMin))
+                close()
             }
+            drawPath(area, areaColor)
+
+            val line = Path().apply {
+                points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
+            }
+            drawPath(line, lineColor, style = Stroke(width = 2.dp.toPx()))
+            points.forEach { drawCircle(lineColor, radius = 3.dp.toPx(), center = it) }
+        }
+
+        // Gemeinsame Monatsachse
+        for (i in 0 until 12 step 2) {
+            val centerX = padL + slotWidth * i + slotWidth / 2f
+            drawCenteredText(measurer, Period.MONTH_SHORT[i], labelStyle, centerX, size.height - labelsH + 2.dp.toPx())
         }
     }
 }

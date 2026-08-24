@@ -36,6 +36,22 @@ Beim Bearbeiten eines laufenden Postens gibt es zwei Möglichkeiten:
 - **Das Ersparte wird bewusst getrennt geführt und beeinflusst weder Einnahmen noch Ausgaben
   noch das Monatsergebnis.**
 
+## Web-Vorschau
+
+`web/index.html` ist eine eigenständige Web-Version zum Ausprobieren – eine einzelne HTML-Datei
+ohne Abhängigkeiten. Einfach im Browser öffnen (Doppelklick genügt) oder auf einen beliebigen
+Webserver legen.
+
+Sie bildet alle drei Reiter und dieselbe Rechenlogik ab (die Funktionen aus `FinanceCalculator`
+sind 1:1 nach JavaScript portiert). Unterschiede zur Android-App:
+
+- Daten liegen im `localStorage` des jeweiligen Browsers, nicht in einer Datenbank –
+  sie sind also gerätegebunden und gehen beim Leeren der Browserdaten verloren
+- Beim ersten Öffnen sind Beispieldaten geladen; ein Klick auf „Alles löschen und leer starten"
+  entfernt sie endgültig
+- Die Sparentwicklung ist in zwei Felder mit gemeinsamer Monatsachse geteilt, weil Sparrate
+  und Gesamtstand um Größenordnungen auseinanderliegen (die Android-App macht das genauso)
+
 ## Technik
 
 | | |
