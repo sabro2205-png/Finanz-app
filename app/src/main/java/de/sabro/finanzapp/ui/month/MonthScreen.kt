@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import de.sabro.finanzapp.data.EntryType
 import de.sabro.finanzapp.data.FinanceEntry
 import de.sabro.finanzapp.domain.CategoryGroup
+import de.sabro.finanzapp.domain.FinanceCalculator
 import de.sabro.finanzapp.domain.MonthUiState
 import de.sabro.finanzapp.ui.components.EmptyHint
 import de.sabro.finanzapp.ui.components.PeriodSwitcher
@@ -94,7 +95,7 @@ fun MonthScreen(
                         Column {
                             state.income.forEachIndexed { index, entry ->
                                 if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 12.dp))
-                                EntryRow(entry, incomeColor()) { onEntryClick(entry) }
+                                EntryRow(entry, state.period, incomeColor()) { onEntryClick(entry) }
                             }
                         }
                     }
@@ -128,6 +129,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedGroups(
             CategoryCard(
                 group = group,
                 expenseTotal = state.expenseTotal,
+                viewPeriod = state.period,
                 accent = CategoryColors[index % CategoryColors.size],
                 onEntryClick = onEntryClick
             )
@@ -226,6 +228,7 @@ private fun SectionHeader(title: String, total: String, color: Color) {
 private fun CategoryCard(
     group: CategoryGroup,
     expenseTotal: Long,
+    viewPeriod: Int,
     accent: Color,
     onEntryClick: (FinanceEntry) -> Unit
 ) {
@@ -271,14 +274,14 @@ private fun CategoryCard(
             Spacer(Modifier.height(4.dp))
 
             group.entries.forEach { entry ->
-                EntryRow(entry, MaterialTheme.colorScheme.onSurface) { onEntryClick(entry) }
+                EntryRow(entry, viewPeriod, MaterialTheme.colorScheme.onSurface) { onEntryClick(entry) }
             }
         }
     }
 }
 
 @Composable
-private fun EntryRow(entry: FinanceEntry, accentColor: Color, onClick: () -> Unit) {
+private fun EntryRow(entry: FinanceEntry, viewPeriod: Int, accentColor: Color, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -303,7 +306,7 @@ private fun EntryRow(entry: FinanceEntry, accentColor: Color, onClick: () -> Uni
                     )
                     Spacer(Modifier.size(4.dp))
                     Text(
-                        text = "monatlich seit ${Period.shortLabel(entry.startPeriod)}",
+                        text = rangeText(entry, viewPeriod),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -337,4 +340,12 @@ private fun EmptyMonthCard() {
             )
         }
     }
+}
+
+/** "seit Jan 2026" bzw. "Jan 2026 – Mai 2028 · noch 21×" */
+private fun rangeText(entry: FinanceEntry, viewPeriod: Int): String {
+    val end = entry.endPeriod ?: return "monatlich seit ${Period.shortLabel(entry.startPeriod)}"
+    val span = "${Period.shortLabel(entry.startPeriod)} – ${Period.shortLabel(end)}"
+    val left = FinanceCalculator.remainingMonths(entry, viewPeriod) ?: 0
+    return if (left > 0) "$span · noch ${left}×" else span
 }

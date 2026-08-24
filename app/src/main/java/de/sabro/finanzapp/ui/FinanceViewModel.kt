@@ -60,9 +60,11 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
             val to = Period.lastOfYear(year)
             combine(
                 repo.savingsForRange(from, to),
-                repo.savingsBalanceBefore(from)
-            ) { entries, startBalance ->
-                FinanceCalculator.buildSavingsState(year, entries, startBalance)
+                repo.savingsBalanceBefore(from),
+                repo.allSavings()
+            ) { entries, startBalance, all ->
+                // Die Prognose braucht die gesamte Historie, nicht nur das Jahr.
+                FinanceCalculator.buildSavingsState(year, entries, startBalance, all)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SavingsUiState())
@@ -88,9 +90,12 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
         title: String,
         amountCents: Long,
         recurring: Boolean,
-        period: Int
+        startPeriod: Int,
+        endPeriod: Int?
     ) {
         viewModelScope.launch {
+            // Bei einmaligen Posten faellt das Ende immer mit dem Start zusammen.
+            val end = if (recurring) endPeriod else startPeriod
             if (existing == null) {
                 repo.addEntry(
                     FinanceEntry(
@@ -98,18 +103,12 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
                         category = if (type == EntryType.EXPENSE) category else null,
                         title = title,
                         amountCents = amountCents,
-                        startPeriod = period,
-                        endPeriod = if (recurring) null else period,
+                        startPeriod = startPeriod,
+                        endPeriod = end,
                         recurring = recurring
                     )
                 )
             } else {
-                // Wechsel zwischen einmalig und laufend: Gueltigkeit mitziehen.
-                val newEnd = when {
-                    recurring && !existing.recurring -> null
-                    !recurring -> existing.startPeriod
-                    else -> existing.endPeriod
-                }
                 repo.updateEntry(
                     existing.copy(
                         type = type,
@@ -117,10 +116,15 @@ class FinanceViewModel(private val repo: FinanceRepository) : ViewModel() {
                         title = title,
                         amountCents = amountCents,
                         recurring = recurring,
-                        endPeriod = newEnd
+                        startPeriod = startPeriod,
+                        endPeriod = end
                     )
                 )
             }
+            // Der Posten kann jetzt ausserhalb des angezeigten Monats liegen.
+            val current = _selectedPeriod.value
+            val active = startPeriod <= current && (end == null || end >= current)
+            if (!active) _selectedPeriod.value = startPeriod
         }
     }
 

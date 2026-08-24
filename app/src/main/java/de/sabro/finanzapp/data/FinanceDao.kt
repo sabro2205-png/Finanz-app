@@ -42,6 +42,9 @@ interface FinanceDao {
     @Query("SELECT * FROM savings WHERE period BETWEEN :fromPeriod AND :toPeriod ORDER BY period ASC, id ASC")
     fun savingsForRange(fromPeriod: Int, toPeriod: Int): Flow<List<SavingsEntry>>
 
+    @Query("SELECT * FROM savings ORDER BY period ASC, id ASC")
+    fun allSavings(): Flow<List<SavingsEntry>>
+
     /** Sparstand vor dem Jahresbeginn – Basis fuer die kumulierte Kurve. */
     @Query("SELECT COALESCE(SUM(amountCents), 0) FROM savings WHERE period < :period")
     fun savingsBalanceBefore(period: Int): Flow<Long>

@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextMeasurer
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.sabro.finanzapp.domain.SavingsPoint
 import de.sabro.finanzapp.util.Period
 import de.sabro.finanzapp.util.formatMoneyCompact
 import kotlin.math.abs
@@ -109,7 +111,7 @@ fun GroupedYearBarChart(
 @Composable
 fun SavingsChart(
     monthlyNet: List<Long>,
-    runningBalance: List<Long>,
+    balancePoints: List<SavingsPoint>,
     barColor: Color,
     negativeBarColor: Color,
     lineColor: Color,
@@ -121,7 +123,8 @@ fun SavingsChart(
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = TextStyle(fontSize = 9.sp, color = labelColor)
     val captionStyle = TextStyle(fontSize = 9.sp, color = labelColor, fontWeight = FontWeight.SemiBold)
-    val areaColor = barColor.copy(alpha = 0.12f)
+    val areaColor = lineColor.copy(alpha = 0.12f)
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerLow
 
     Canvas(
         modifier
@@ -148,8 +151,9 @@ fun SavingsChart(
         val zeroY = yRate(0L)
 
         // ---- Feld 2: kumulierter Gesamtstand
-        val bMax = maxOf(runningBalance.maxOrNull() ?: 0L, 0L)
-        val bMin = minOf(runningBalance.minOrNull() ?: 0L, 0L)
+        val balances = balancePoints.map { it.balanceCents }
+        val bMax = maxOf(balances.maxOrNull() ?: 0L, 0L)
+        val bMin = minOf(balances.minOrNull() ?: 0L, 0L)
         val bSpan = (bMax - bMin).coerceAtLeast(1L).toFloat()
         fun yBal(v: Long): Float = topOfBalance + fieldH - ((v - bMin) / bSpan) * fieldH
 
@@ -184,23 +188,54 @@ fun SavingsChart(
         drawLine(axisColor, Offset(padL, yBal(bMax)), Offset(size.width, yBal(bMax)), strokeWidth = 1.dp.toPx())
         drawLine(axisColor, Offset(padL, yBal(bMin)), Offset(size.width, yBal(bMin)), strokeWidth = 1.dp.toPx())
 
-        if (runningBalance.isNotEmpty()) {
-            val points = runningBalance.mapIndexed { i, v ->
-                Offset(padL + slotWidth * i + slotWidth / 2f, yBal(v))
+        if (balancePoints.isNotEmpty()) {
+            val points = balancePoints.mapIndexed { i, p ->
+                Offset(padL + slotWidth * i + slotWidth / 2f, yBal(p.balanceCents))
             }
-            val area = Path().apply {
-                moveTo(points.first().x, yBal(bMin))
-                points.forEach { lineTo(it.x, it.y) }
-                lineTo(points.last().x, yBal(bMin))
-                close()
-            }
-            drawPath(area, areaColor)
+            // Erfasste Monate durchgezogen, hochgerechnete gestrichelt.
+            val lastActual = balancePoints.indexOfLast { !it.forecast }.coerceAtLeast(0)
+            val actual = points.take(lastActual + 1)
+            val projected = if (balancePoints.any { it.forecast }) points.drop(lastActual) else emptyList()
 
-            val line = Path().apply {
-                points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
+            if (actual.size > 1) {
+                val area = Path().apply {
+                    moveTo(actual.first().x, yBal(bMin))
+                    actual.forEach { lineTo(it.x, it.y) }
+                    lineTo(actual.last().x, yBal(bMin))
+                    close()
+                }
+                drawPath(area, areaColor)
+
+                val line = Path().apply {
+                    actual.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
+                }
+                drawPath(line, lineColor, style = Stroke(width = 2.dp.toPx()))
             }
-            drawPath(line, lineColor, style = Stroke(width = 2.dp.toPx()))
-            points.forEach { drawCircle(lineColor, radius = 3.dp.toPx(), center = it) }
+
+            if (projected.size > 1) {
+                val dashed = Path().apply {
+                    projected.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
+                }
+                drawPath(
+                    path = dashed,
+                    color = lineColor,
+                    style = Stroke(
+                        width = 2.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(
+                            floatArrayOf(4.dp.toPx(), 3.dp.toPx())
+                        )
+                    )
+                )
+            }
+
+            points.forEachIndexed { i, p ->
+                if (balancePoints[i].forecast) {
+                    drawCircle(surfaceColor, radius = 2.6.dp.toPx(), center = p)
+                    drawCircle(lineColor, radius = 2.6.dp.toPx(), center = p, style = Stroke(width = 1.6.dp.toPx()))
+                } else {
+                    drawCircle(lineColor, radius = 3.dp.toPx(), center = p)
+                }
+            }
         }
 
         // Gemeinsame Monatsachse

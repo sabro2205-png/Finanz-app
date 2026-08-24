@@ -23,13 +23,15 @@ class FinanceRepository(private val dao: FinanceDao) {
         if (newEnd < entry.startPeriod) {
             dao.deleteEntry(entry)
         } else {
-            dao.updateEntry(entry.copy(endPeriod = newEnd))
+            dao.updateEntry(entry.copy(endPeriod = newEnd, recurring = true))
         }
     }
 
     fun savingsForRange(from: Int, to: Int): Flow<List<SavingsEntry>> = dao.savingsForRange(from, to)
 
     fun savingsBalanceBefore(period: Int): Flow<Long> = dao.savingsBalanceBefore(period)
+
+    fun allSavings(): Flow<List<SavingsEntry>> = dao.allSavings()
 
     suspend fun addSaving(entry: SavingsEntry) { dao.insertSaving(entry) }
 

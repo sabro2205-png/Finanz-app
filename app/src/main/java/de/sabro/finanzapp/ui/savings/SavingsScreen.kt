@@ -81,19 +81,23 @@ fun SavingsScreen(
                     Spacer(Modifier.height(12.dp))
                     SavingsChart(
                         monthlyNet = state.months.map { it.netCents },
-                        runningBalance = state.months.map { it.runningBalanceCents },
+                        balancePoints = state.forecast.points,
                         barColor = incomeColor(),
                         negativeBarColor = expenseColor(),
                         lineColor = savingsColor()
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        LegendDot(incomeColor(), "Sparrate im Monat")
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        LegendDot(incomeColor(), "Sparrate")
+                        LegendDot(expenseColor(), "Entnahme")
                         LegendDot(savingsColor(), "Gesamtstand")
+                        if (state.forecast.available) LegendDot(savingsColor(), "Prognose")
                     }
                 }
             }
         }
+
+        item { ForecastCard(state) }
 
         item {
             Text(
@@ -152,7 +156,7 @@ private fun SavingsSummaryCard(state: SavingsUiState) {
                     modifier = Modifier.weight(1f)
                 )
                 StatBlock(
-                    label = "Stand Jahresende",
+                    label = if (state.year < Period.currentYear()) "Stand Jahresende" else "Erfasster Stand",
                     value = formatMoney(state.endBalanceCents),
                     valueColor = savingsColor(),
                     modifier = Modifier.weight(1f),
@@ -246,6 +250,101 @@ private fun SavingsMonthCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Hochrechnung auf Basis des bisherigen Sparverhaltens. */
+@Composable
+private fun ForecastCard(state: SavingsUiState) {
+    val f = state.forecast
+
+    if (f.basisMonths == 0) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Prognose", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Sobald du für ein paar Monate Sparbeträge erfasst hast, rechne ich dir " +
+                        "hier hoch, wo du am Jahresende voraussichtlich stehst.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    if (!f.available) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Prognose", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Für ${state.year} sind alle Monate erfasst – es bleibt nichts " +
+                        "hochzurechnen. Blättere auf ${state.year + 1}, um die Prognose zu sehen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                text = "Voraussichtlich Ende ${state.year}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = "≈ ${formatMoney(f.endOfYearCents)}",
+                style = MaterialTheme.typography.headlineMedium,
+                color = amountColor(f.endOfYearCents)
+            )
+            Text(
+                text = "Hochgerechnet für ${f.openMonths} " +
+                    (if (f.openMonths == 1) "offenen Monat" else "offene Monate") +
+                    " mit ${formatMoney(f.averageCents)} pro Monat – dem Durchschnitt aus " +
+                    "${f.basisMonths} ${if (f.basisMonths == 1) "Monat" else "Monaten"}, " +
+                    "in denen du bisher etwas erfasst hast.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            Row(Modifier.fillMaxWidth()) {
+                StatBlock(
+                    label = "In 12 Monaten",
+                    value = "≈ ${formatMoney(f.inTwelveMonthsCents)}",
+                    valueColor = savingsColor(),
+                    modifier = Modifier.weight(1f)
+                )
+                StatBlock(
+                    label = "Ø Sparrate",
+                    value = "${formatMoney(f.averageCents)} / Monat",
+                    modifier = Modifier.weight(1f),
+                    alignment = Alignment.End
+                )
+            }
+
+            Text(
+                text = "Reine Hochrechnung aus der Vergangenheit – keine Zusage. Ein einzelner " +
+                    "Ausreißer nach oben oder unten verschiebt den Durchschnitt spürbar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(top = 10.dp)
+            )
         }
     }
 }

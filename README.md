@@ -14,11 +14,19 @@ erfassen, Monate miteinander vergleichen und das Ersparte getrennt über das Jah
 - Direkter Vergleich mit dem Vormonat („Gegenüber Juli: +120,50 €")
 - Über die Pfeile oder einen Tipp auf den Monatsnamen zwischen allen Monaten wechseln
 
-### Wiederkehrende Posten
+### Wiederkehrende Posten mit Zeitraum
 Miete, Finanzierungen und Abos lassen sich als **monatlich wiederkehrend** anlegen.
-Sie tauchen dann automatisch in jedem Folgemonat auf und müssen nicht neu eingegeben werden.
+Über die Felder **von / bis** wird der Zeitraum festgelegt:
 
-Beim Bearbeiten eines laufenden Postens gibt es zwei Möglichkeiten:
+- **von** – ab welchem Monat der Posten gilt (nicht zwingend der gerade angezeigte)
+- **bis** – bis zu welchem Monat, oder **unbefristet** für laufende Kosten wie Miete
+
+Für befristete Posten zeigt der Dialog die Laufzeit und die Gesamtsumme an
+(„Laufzeit 29 Monate · Gesamt 4.335,50 €"), die Monatsliste die Restlaufzeit
+(„Jan 2026 – Mai 2028 · noch 22×"). Das eignet sich für Finanzierungen mit fester
+Ratenzahl.
+
+Beim Bearbeiten eines laufenden Postens gibt es zusätzlich:
 - **„Ab &lt;Monat&gt; beenden"** – der Posten läuft bis zum Vormonat weiter, die Vergangenheit
   bleibt unverändert (z. B. ein gekündigtes Abo)
 - **„Komplett löschen"** – der Posten verschwindet aus allen Monaten
@@ -35,6 +43,21 @@ Beim Bearbeiten eines laufenden Postens gibt es zwei Möglichkeiten:
 - Kennzahlen: Stand zu Jahresbeginn und -ende, Summe des Jahres, Ø pro Sparmonat, bester Monat
 - **Das Ersparte wird bewusst getrennt geführt und beeinflusst weder Einnahmen noch Ausgaben
   noch das Monatsergebnis.**
+
+### Sparprognose
+Aus dem bisherigen Sparverhalten wird hochgerechnet, wo der Sparstand am Jahresende
+voraussichtlich steht, und wie viel in zwölf Monaten zusammengekommen sein dürfte.
+
+Grundlage ist der Durchschnitt über **alle Monate mit Einträgen, die nicht in der Zukunft
+liegen** – auch über Jahresgrenzen hinweg. Zwei Regeln halten die Rechnung ehrlich:
+
+- Ein vergangener Monat ohne Eintrag ist eine Tatsache (nichts gespart) und wird nicht
+  hochgerechnet. Nur künftige Monate ohne Eintrag werden mit dem Durchschnitt gefüllt.
+- Entnahmen (negative Beträge) senken den Durchschnitt genauso, wie sie den Stand senken.
+
+Im Diagramm ist die Prognose als gestrichelte Linie mit hohlen Punkten von den erfassten
+Werten abgesetzt. Ohne erfasste Monate erscheint statt einer Zahl ein Hinweis –
+es wird nichts erfunden.
 
 ## Web-Vorschau
 
@@ -105,4 +128,7 @@ mit API 35 und JDK 17.
 - Hochrechnung laufender Posten in der Jahresansicht
 - Kumulierte Sparentwicklung inklusive Entnahmen
 - Erspartes verändert das Monatsergebnis nicht
+- Sparprognose: Durchschnittsbildung nur aus Monaten bis heute, Entnahmen drücken den
+  Durchschnitt, vergangene Leermonate werden nicht hochgerechnet, Vorjahre zählen mit
+- Restlaufzeit und Gültigkeit befristeter Posten über Jahresgrenzen hinweg
 - Parsen deutscher und englischer Betragsschreibweisen, Schutz gegen Division durch Null

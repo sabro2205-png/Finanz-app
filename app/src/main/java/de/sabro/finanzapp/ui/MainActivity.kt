@@ -177,7 +177,8 @@ fun FinanzApp() {
                     title = result.title,
                     amountCents = result.amountCents,
                     recurring = result.recurring,
-                    period = selectedPeriod
+                    startPeriod = result.startPeriod,
+                    endPeriod = result.endPeriod
                 )
                 dialog = null
             },

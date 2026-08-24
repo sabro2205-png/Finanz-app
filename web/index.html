@@ -185,6 +185,7 @@ button { font: inherit; color: inherit; }
 .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; }
 .legend span { display:flex; align-items:center; gap:6px; font-size:11.5px; color: var(--ink-2); }
 .legend .line { width:14px; height:0; border-top:2px solid; border-radius:2px; }
+.legend .line.dashed { border-top-style:dashed; }
 .tip {
   position:absolute; pointer-events:none; opacity:0; transform:translate(-50%,-100%);
   background: var(--card); border:1px solid var(--rule-strong); border-radius:10px;
@@ -230,6 +231,24 @@ td.zero { color: var(--ink-3); }
 }
 .fab svg { width:18px; height:18px; }
 .fab[hidden] { display:none; }
+
+/* ------------------------------------------------------------- Zeitraum */
+.range { display:flex; align-items:center; gap:8px; }
+.range button {
+  flex:1; min-width:0; text-align:left; padding:8px 10px; border-radius:10px;
+  border:1px solid var(--rule-strong); background: var(--surface); cursor:pointer;
+}
+.range button[aria-pressed="true"] { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.range button span { display:block; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color: var(--ink-3); }
+.range button b { display:block; font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.range .dash { color: var(--ink-3); flex:none; }
+.picker { margin-top:10px; padding:10px; border:1px solid var(--rule); border-radius:12px; background: var(--card-2); }
+.picker .switcher.compact { margin-bottom:8px; justify-content:center; gap:10px; }
+.picker .switcher.compact .navbtn { width:30px; height:30px; }
+.picker .switcher.compact .y { font-size:15px; font-weight:600; min-width:52px; text-align:center; }
+.picker .chips button[disabled] { opacity:.35; cursor:not-allowed; }
+.picker .subtle { margin-top:8px; }
+.rangenote { margin:8px 0 0; font-size:12px; color: var(--ink-2); }
 
 /* ------------------------------------------------------------------ Dialoge */
 dialog {
@@ -536,13 +555,65 @@ function seed() {
   for (let m = 1; m <= 12; m++) {
     s.savings.push({ id: s.nextId++, period: periodOf(y - 1, m), title:"Tagesgeld", amountCents: 25000 });
   }
-  for (let m = 1; m <= 12; m++) {
+  // Nur bis zum laufenden Monat – die Prognose füllt den Rest des Jahres.
+  const upTo = monthOf(currentPeriod());
+  for (let m = 1; m <= upTo; m++) {
     s.savings.push({ id: s.nextId++, period: periodOf(y, m), title:"ETF-Sparplan", amountCents: 15000 });
     if (m !== 7) s.savings.push({ id: s.nextId++, period: periodOf(y, m), title:"Tagesgeld", amountCents: 20000 });
   }
-  s.savings.push({ id: s.nextId++, period: periodOf(y, 7), title:"Entnahme Urlaub", amountCents: -60000 });
+  if (upTo >= 7) s.savings.push({ id: s.nextId++, period: periodOf(y, 7), title:"Entnahme Urlaub", amountCents: -60000 });
 
   return s;
+}
+
+/**
+ * Prognose auf Basis des bisherigen Sparverhaltens.
+ *
+ * Grundlage ist der Durchschnitt über alle Monate, in denen bereits etwas
+ * erfasst wurde und die nicht in der Zukunft liegen. Monate ohne Eintrag in
+ * der Vergangenheit gelten als Tatsache (0 gespart) und werden nicht
+ * hochgerechnet – nur künftige Monate ohne Eintrag.
+ */
+function buildSavingsForecast(year, allSavings) {
+  const today = currentPeriod();
+
+  // Nettobetrag je Monat, über alle Jahre
+  const netByPeriod = new Map();
+  allSavings.forEach(e => netByPeriod.set(e.period, (netByPeriod.get(e.period) || 0) + e.amountCents));
+
+  const basis = [...netByPeriod.entries()].filter(([p]) => p <= today);
+  const basisMonths = basis.length;
+  const averageCents = basisMonths === 0 ? 0
+    : Math.round(basis.reduce((sum, [, v]) => sum + v, 0) / basisMonths);
+
+  const balanceTodayCents = allSavings
+    .filter(e => e.period <= today)
+    .reduce((sum, e) => sum + e.amountCents, 0);
+
+  // Stand zu Beginn des angezeigten Jahres
+  let running = allSavings
+    .filter(e => e.period < firstOfYear(year))
+    .reduce((sum, e) => sum + e.amountCents, 0);
+
+  const points = [];
+  let openMonths = 0;
+  for (let m = 1; m <= 12; m++) {
+    const p = periodOf(year, m);
+    const hasEntry = netByPeriod.has(p);
+    const isForecast = !hasEntry && p > today && basisMonths > 0;
+    if (hasEntry) running += netByPeriod.get(p);
+    else if (isForecast) { running += averageCents; openMonths++; }
+    points.push({ period: p, balanceCents: running, forecast: isForecast });
+  }
+
+  return {
+    basisMonths, averageCents, openMonths,
+    balanceTodayCents,
+    points,
+    endOfYearCents: points[11].balanceCents,
+    in12MonthsCents: balanceTodayCents + averageCents * 12,
+    available: basisMonths > 0 && openMonths > 0
+  };
 }
 
 /* --------------------------------------------------------------- Selektoren */
@@ -555,9 +626,13 @@ const monthState = () => buildMonthState(state.period, entriesFor(state.period),
 const yearState = () => buildYearState(state.year,
   state.entries.filter(e => e.startPeriod <= lastOfYear(state.year) && (e.endPeriod === null || e.endPeriod >= firstOfYear(state.year))));
 
-const savingsState = () => buildSavingsState(state.year,
-  state.savings.filter(e => e.period >= firstOfYear(state.year) && e.period <= lastOfYear(state.year)),
-  state.savings.filter(e => e.period < firstOfYear(state.year)).reduce((s, e) => s + e.amountCents, 0));
+const savingsState = () => {
+  const base = buildSavingsState(state.year,
+    state.savings.filter(e => e.period >= firstOfYear(state.year) && e.period <= lastOfYear(state.year)),
+    state.savings.filter(e => e.period < firstOfYear(state.year)).reduce((s, e) => s + e.amountCents, 0));
+  base.forecast = buildSavingsForecast(state.year, state.savings);
+  return base;
+};
 
 /* ------------------------------------------------------------------ Helfer */
 const esc = str => String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -579,6 +654,14 @@ function switcherHTML(title, sub, canPick) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>`;
+}
+
+/** "seit Jan 2026" bzw. "Jan 2026 – Mai 2028 · noch 21×" */
+function rangeText(e, viewPeriod) {
+  if (e.endPeriod === null) return "seit " + shortLabel(e.startPeriod);
+  const left = e.endPeriod - viewPeriod + 1;
+  const span = shortLabel(e.startPeriod) + " – " + shortLabel(e.endPeriod);
+  return left > 0 ? span + " · noch " + left + "×" : span;
 }
 
 const recurTag = `<span class="tag"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 9a8 8 0 0 1 13.7-3.7L20 7M20 15a8 8 0 0 1-13.7 3.7L4 17"/><path d="M20 3v4h-4M4 21v-4h4"/></svg>monatlich</span>`;
@@ -677,7 +760,7 @@ function entryRowHTML(e) {
   return `<button class="row" type="button" data-entry="${e.id}">
     <span class="t">
       <b>${esc(e.title)}</b>
-      ${e.recurring ? `<span class="meta">${recurTag}seit ${esc(shortLabel(e.startPeriod))}${e.endPeriod !== null ? " bis " + esc(shortLabel(e.endPeriod)) : ""}</span>` : ""}
+      ${e.recurring ? `<span class="meta">${recurTag}${esc(rangeText(e, state.period))}</span>` : ""}
     </span>
     <span class="a num">${fmt(e.amountCents)}</span>
   </button>`;
@@ -751,7 +834,7 @@ function renderSavings() {
         <div class="val num">${fmt(s.startBalanceCents)}</div>
       </div>
       <div>
-        <div class="lbl">Stand Jahresende</div>
+        <div class="lbl">${s.year < currentYear() ? "Stand Jahresende" : "Erfasster Stand"}</div>
         <div class="val num">${fmt(s.endBalanceCents)}</div>
       </div>
     </div>
@@ -775,9 +858,11 @@ function renderSavings() {
       <span><i class="dot" style="background:var(--save)"></i>Sparrate</span>
       <span><i class="dot" style="background:var(--out)"></i>Entnahme</span>
       <span><i class="line" style="border-color:var(--save)"></i>Gesamtstand</span>
+      ${s.forecast.available ? `<span><i class="line dashed" style="border-color:var(--save)"></i>Prognose</span>` : ""}
     </div>
   </div>`;
 
+  h += forecastCardHTML(s);
   h += `<div class="sechead"><h2>Monate</h2></div>`;
   h += s.months.map(mo => `
     <div class="card" style="margin-top:10px">
@@ -803,6 +888,44 @@ function renderSavings() {
 
   view.innerHTML = h;
   drawSavingsChart(document.getElementById("savChart"), s);
+}
+
+function forecastCardHTML(s) {
+  const f = s.forecast;
+  if (f.basisMonths === 0) {
+    return `<div class="card empty" style="margin-top:12px">
+      <h3>Prognose</h3>
+      <p>Sobald du für ein paar Monate Sparbeträge erfasst hast, rechne ich dir hier hoch,
+      wo du am Jahresende voraussichtlich stehst.</p>
+    </div>`;
+  }
+  if (!f.available) {
+    return `<div class="card empty" style="margin-top:12px">
+      <h3>Prognose</h3>
+      <p>Für ${s.year} sind alle Monate erfasst – es bleibt nichts hochzurechnen.
+      Blättere auf ${s.year + 1}, um die Prognose zu sehen.</p>
+    </div>`;
+  }
+  return `<div class="card hero" style="margin-top:12px">
+    <div class="lbl">Voraussichtlich Ende ${s.year}</div>
+    <div class="rest num">≈ ${fmt(f.endOfYearCents)}</div>
+    <p class="note">Hochgerechnet für ${f.openMonths} ${f.openMonths === 1 ? "offenen Monat" : "offene Monate"}
+    mit <span class="num">${fmt(f.averageCents)}</span> pro Monat – dem Durchschnitt aus
+    ${f.basisMonths} ${f.basisMonths === 1 ? "Monat" : "Monaten"}, in denen du bisher etwas erfasst hast.</p>
+    <hr>
+    <div class="duo">
+      <div>
+        <div class="lbl">In 12 Monaten</div>
+        <div class="val num">≈ ${fmt(f.in12MonthsCents)}</div>
+      </div>
+      <div>
+        <div class="lbl">Ø Sparrate</div>
+        <div class="val num">${fmt(f.averageCents)} / Monat</div>
+      </div>
+    </div>
+    <p class="note">Reine Hochrechnung aus der Vergangenheit – keine Zusage. Ein einzelner
+    Ausreißer nach oben oder unten verschiebt den Durchschnitt spürbar.</p>
+  </div>`;
 }
 
 /* =================================================================== Charts */
@@ -926,8 +1049,9 @@ function drawSavingsChart(wrap, s) {
   const y1 = v => p1Top + p1H - ((v - nMin) / nSpan) * p1H;
   const zero1 = y1(0);
 
-  // Feld 2 – kumulierter Gesamtstand
-  const bals = s.months.map(m => m.runningBalanceCents);
+  // Feld 2 – kumulierter Gesamtstand, inklusive der prognostizierten Fortsetzung
+  const fpts = s.forecast.points;
+  const bals = fpts.map(q => q.balanceCents);
   const bMax = Math.max(0, ...bals), bMin = Math.min(0, ...bals);
   const bSpan = Math.max(1, bMax - bMin);
   const y2 = v => p2Top + p2H - ((v - bMin) / bSpan) * p2H;
@@ -946,12 +1070,26 @@ function drawSavingsChart(wrap, s) {
     slots.push({ cx, top: Math.min(vy, zero1) });
   }
 
-  const pts = s.months.map((m, i) => [padL + slotW * i + slotW / 2, y2(m.runningBalanceCents)]);
-  const area = `<path d="M${pts[0][0]} ${y2(bMin)} ${pts.map(q => "L" + q[0] + " " + q[1]).join(" ")} L${pts[11][0]} ${y2(bMin)} Z" fill="var(--save)" opacity="0.12"/>`;
-  const line = `<polyline points="${pts.map(q => q.join(",")).join(" ")}" fill="none" stroke="var(--save)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-  const dots = pts.map(q => `<circle cx="${q[0]}" cy="${q[1]}" r="3" fill="var(--save)" stroke="var(--chart-surface)" stroke-width="2"/>`).join("");
+  const pts = fpts.map((q, i) => [padL + slotW * i + slotW / 2, y2(q.balanceCents)]);
+  const lastActual = fpts.reduce((acc, q, i) => q.forecast ? acc : i, 0);
+  const actualPts = pts.slice(0, lastActual + 1);
+  // Die Prognoselinie beginnt am letzten Ist-Punkt, damit keine Lücke entsteht.
+  const forecastPts = fpts.some(q => q.forecast) ? pts.slice(lastActual) : [];
 
-  wrap.innerHTML = `<svg viewBox="0 0 ${VBW} ${H}" role="img" aria-label="Zwei Diagramme für ${s.year}: oben die Sparrate je Monat, darunter der kumulierte Gesamtstand. Alle Werte stehen in der Liste darunter.">
+  const area = actualPts.length > 1
+    ? `<path d="M${actualPts[0][0]} ${y2(bMin)} ${actualPts.map(q => "L" + q[0] + " " + q[1]).join(" ")} L${actualPts[actualPts.length - 1][0]} ${y2(bMin)} Z" fill="var(--save)" opacity="0.12"/>`
+    : "";
+  const line = actualPts.length > 1
+    ? `<polyline points="${actualPts.map(q => q.join(",")).join(" ")}" fill="none" stroke="var(--save)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+    : "";
+  const fline = forecastPts.length > 1
+    ? `<polyline points="${forecastPts.map(q => q.join(",")).join(" ")}" fill="none" stroke="var(--save)" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round"/>`
+    : "";
+  const dots = pts.map((q, i) => fpts[i].forecast
+    ? `<circle cx="${q[0]}" cy="${q[1]}" r="2.6" fill="var(--chart-surface)" stroke="var(--save)" stroke-width="1.6"/>`
+    : `<circle cx="${q[0]}" cy="${q[1]}" r="3" fill="var(--save)" stroke="var(--chart-surface)" stroke-width="2"/>`).join("");
+
+  wrap.innerHTML = `<svg viewBox="0 0 ${VBW} ${H}" role="img" aria-label="Zwei Diagramme für ${s.year}: oben die Sparrate je Monat, darunter der kumulierte Gesamtstand mit gestrichelter Prognose für noch offene Monate. Alle Werte stehen in der Liste darunter.">
     <text x="0" y="${p1Top - 13}" font-size="9" fill="var(--ink-3)" font-weight="600" letter-spacing="0.5">SPARRATE</text>
     <text x="0" y="${y1(nMax) + 3}" font-size="9.5" fill="var(--ink-3)" class="num">${fmtCompact(nMax)}</text>
     ${nMin < 0 ? `<text x="0" y="${y1(nMin) + 3}" font-size="9.5" fill="var(--ink-3)" class="num">${fmtCompact(nMin)}</text>` : ""}
@@ -962,7 +1100,7 @@ function drawSavingsChart(wrap, s) {
     <text x="0" y="${y2(bMax) + 3}" font-size="9.5" fill="var(--ink-3)" class="num">${fmtCompact(bMax)}</text>
     <line x1="${padL}" y1="${y2(bMax)}" x2="${VBW}" y2="${y2(bMax)}" stroke="var(--grid)" stroke-width="1"/>
     <line x1="${padL}" y1="${y2(bMin)}" x2="${VBW}" y2="${y2(bMin)}" stroke="var(--axis)" stroke-width="1"/>
-    ${area}${line}${dots}
+    ${area}${line}${fline}${dots}
 
     ${labels}${hits}
   </svg>`;
@@ -972,8 +1110,8 @@ function drawSavingsChart(wrap, s) {
   wireHits(wrap, svg, tip, slots, i => {
     const m = s.months[i];
     return `<b>${MONTHS[i]} ${s.year}</b>
-      <div class="r"><span class="k"><i class="dot" style="background:${m.netCents < 0 ? "var(--out)" : "var(--save)"}"></i>${m.netCents < 0 ? "Entnahme" : "Sparrate"}</span><span class="v num">${m.netCents === 0 ? "–" : fmtSigned(m.netCents)}</span></div>
-      <div class="r"><span class="k"><i class="line" style="border-color:var(--save)"></i>Gesamtstand</span><span class="v num">${fmt(m.runningBalanceCents)}</span></div>`;
+      <div class="r"><span class="k"><i class="dot" style="background:${m.netCents < 0 ? "var(--out)" : "var(--save)"}"></i>${m.netCents < 0 ? "Entnahme" : "Sparrate"}</span><span class="v num">${fpts[i].forecast ? "noch offen" : (m.netCents === 0 ? "–" : fmtSigned(m.netCents))}</span></div>
+      <div class="r"><span class="k"><i class="line${fpts[i].forecast ? " dashed" : ""}" style="border-color:var(--save)"></i>${fpts[i].forecast ? "Prognose" : "Gesamtstand"}</span><span class="v num">${fpts[i].forecast ? "≈ " : ""}${fmt(fpts[i].balanceCents)}</span></div>`;
   });
 }
 
@@ -997,12 +1135,49 @@ function entrySheet(existing, initialType) {
   let type = existing ? existing.type : (initialType || "expense");
   let category = existing && existing.category ? existing.category : "OTHER";
   let recurring = existing ? existing.recurring : false;
+  let startPeriod = existing ? existing.startPeriod : period;
+  let endPeriod = existing ? existing.endPeriod : period;   // bei einmalig immer == startPeriod
+  let picking = null;          // "start" | "end" | null
+  let pickYear = yearOf(startPeriod);
   let showErr = false;
 
   const placeholder = () => {
     if (type === "income") return "z. B. Gehalt";
     return { RENT:"z. B. Warmmiete", FINANCING:"z. B. Autokredit", SUBSCRIPTION:"z. B. Netflix", OTHER:"z. B. Lebensmittel" }[category];
   };
+
+  function rangeInfo(cents) {
+    if (!recurring) return "";
+    if (endPeriod === null) return "Läuft ab " + periodLabel(startPeriod) + " unbefristet weiter.";
+    const months = endPeriod - startPeriod + 1;
+    const total = cents !== null && cents > 0 ? " · Gesamt " + fmt(cents * months) : "";
+    return "Laufzeit " + months + " " + (months === 1 ? "Monat" : "Monate") + total + ".";
+  }
+
+  function pickerHTML() {
+    if (picking === null) return "";
+    const target = picking === "start" ? startPeriod : endPeriod;
+    return `<div class="picker">
+      <div class="switcher compact">
+        <button class="navbtn" type="button" data-pickyear="-1" aria-label="Jahr zurück">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <span class="y">${pickYear}</span>
+        <button class="navbtn" type="button" data-pickyear="1" aria-label="Jahr weiter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div class="chips months" role="group" aria-label="Monat wählen">
+        ${MONTHS_SHORT.map((mn, i) => {
+          const cand = periodOf(pickYear, i + 1);
+          const disabled = picking === "end" && cand < startPeriod;
+          return `<button type="button" data-setmonth="${i + 1}" ${disabled ? "disabled" : ""}
+                    aria-pressed="${target !== null && cand === target}">${mn}</button>`;
+        }).join("")}
+      </div>
+      ${picking === "end" ? `<button type="button" class="subtle" data-setopen>Kein Ende – läuft unbefristet</button>` : ""}
+    </div>`;
+  }
 
   function paint() {
     const title = sheet.querySelector("#f-title") ? sheet.querySelector("#f-title").value : (existing ? existing.title : "");
@@ -1013,7 +1188,7 @@ function entrySheet(existing, initialType) {
 
     openSheetKeepFocus(`
       <h2>${existing ? "Posten bearbeiten" : "Neuer Posten"}</h2>
-      <div class="when">${esc(periodLabel(period))}</div>
+      <div class="when">${esc(recurring ? "Wiederkehrender Posten" : periodLabel(startPeriod))}</div>
 
       <div class="field">
         <div class="seg" role="group" aria-label="Art des Postens">
@@ -1044,9 +1219,24 @@ function entrySheet(existing, initialType) {
       <div class="toggle">
         <div class="t">
           <b>Monatlich wiederkehrend</b>
-          <span>${recurring ? "Gilt ab " + esc(periodLabel(period)) + " in jedem Monat" : "Gilt nur in " + esc(periodLabel(period))}</span>
+          <span>${recurring ? "Läuft über mehrere Monate" : "Gilt nur in einem einzelnen Monat"}</span>
         </div>
-        <button type="button" data-recurring aria-pressed="${recurring}" role="switch" aria-checked="${recurring}" aria-label="Monatlich wiederkehrend"></button>
+        <button type="button" data-recurring role="switch" aria-checked="${recurring}" aria-pressed="${recurring}" aria-label="Monatlich wiederkehrend"></button>
+      </div>
+
+      <div class="field" style="margin-top:12px">
+        <label>${recurring ? "Zeitraum" : "Monat"}</label>
+        <div class="range">
+          <button type="button" data-pick="start" aria-pressed="${picking === "start"}">
+            <span>${recurring ? "von" : "im Monat"}</span><b>${esc(periodLabel(startPeriod))}</b>
+          </button>
+          ${recurring ? `<span class="dash" aria-hidden="true">–</span>
+          <button type="button" data-pick="end" aria-pressed="${picking === "end"}">
+            <span>bis</span><b>${endPeriod === null ? "unbefristet" : esc(periodLabel(endPeriod))}</b>
+          </button>` : ""}
+        </div>
+        ${pickerHTML()}
+        ${recurring ? `<p class="rangenote">${esc(rangeInfo(cents))}</p>` : ""}
       </div>
 
       ${showErr && !(okTitle && okAmount) ? `<p class="err">Bitte eine Bezeichnung und einen Betrag größer als 0 eingeben.</p>` : ""}
@@ -1069,25 +1259,18 @@ function entrySheet(existing, initialType) {
     const cents = parseAmount(sheet.querySelector("#f-amount").value);
     if (!title || cents === null || cents <= 0) { showErr = true; paint(); return; }
 
-    if (!existing) {
-      state.entries.push({
-        id: nextId(), type,
-        category: type === "expense" ? category : null,
-        title, amountCents: cents,
-        startPeriod: period,
-        endPeriod: recurring ? null : period,
-        recurring
-      });
-      announce("Posten gespeichert.");
-    } else {
-      const endPeriod = recurring && !existing.recurring ? null
-                      : (!recurring ? existing.startPeriod : existing.endPeriod);
-      Object.assign(existing, {
-        type, category: type === "expense" ? category : null,
-        title, amountCents: cents, recurring, endPeriod
-      });
-      announce("Posten aktualisiert.");
-    }
+    const end = recurring ? endPeriod : startPeriod;
+    const data = {
+      type, category: type === "expense" ? category : null,
+      title, amountCents: cents, startPeriod, endPeriod: end, recurring
+    };
+
+    if (!existing) { state.entries.push(Object.assign({ id: nextId() }, data)); announce("Posten gespeichert."); }
+    else { Object.assign(existing, data); announce("Posten aktualisiert."); }
+
+    // Der Posten kann jetzt ausserhalb des angezeigten Monats liegen – dorthin springen.
+    if (!isActiveIn(data, state.period)) state.period = startPeriod;
+
     state.demo = false;
     persistAndRender();
     closeSheet();
@@ -1098,7 +1281,32 @@ function entrySheet(existing, initialType) {
     if (!t) return;
     if (t.dataset.type) { type = t.dataset.type; paint(); }
     else if (t.dataset.cat) { category = t.dataset.cat; paint(); }
-    else if (t.hasAttribute("data-recurring")) { recurring = !recurring; paint(); }
+    else if (t.hasAttribute("data-recurring")) {
+      recurring = !recurring;
+      // Beim Einschalten offen lassen, beim Ausschalten auf den Startmonat zurück.
+      endPeriod = recurring ? null : startPeriod;
+      picking = null;
+      paint();
+    }
+    else if (t.dataset.pick) {
+      picking = picking === t.dataset.pick ? null : t.dataset.pick;
+      if (picking) pickYear = yearOf(picking === "start" ? startPeriod : (endPeriod ?? startPeriod));
+      paint();
+    }
+    else if (t.dataset.pickyear) { pickYear += Number(t.dataset.pickyear); paint(); }
+    else if (t.dataset.setmonth) {
+      const chosen = periodOf(pickYear, Number(t.dataset.setmonth));
+      if (picking === "start") {
+        startPeriod = chosen;
+        if (!recurring) endPeriod = chosen;
+        else if (endPeriod !== null && endPeriod < startPeriod) endPeriod = startPeriod;
+      } else {
+        endPeriod = chosen;
+      }
+      picking = null;
+      paint();
+    }
+    else if (t.hasAttribute("data-setopen")) { endPeriod = null; picking = null; paint(); }
     else if (t.hasAttribute("data-cancel")) closeSheet();
     else if (t.hasAttribute("data-del")) {
       state.entries = state.entries.filter(e => e.id !== existing.id);
@@ -1107,7 +1315,7 @@ function entrySheet(existing, initialType) {
     else if (t.hasAttribute("data-stop")) {
       const newEnd = period - 1;
       if (newEnd < existing.startPeriod) state.entries = state.entries.filter(e => e.id !== existing.id);
-      else existing.endPeriod = newEnd;
+      else { existing.endPeriod = newEnd; existing.recurring = true; }
       state.demo = false; persistAndRender(); closeSheet(); announce("Posten beendet.");
     }
   };

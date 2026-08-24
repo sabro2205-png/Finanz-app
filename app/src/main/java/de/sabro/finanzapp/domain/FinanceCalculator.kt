@@ -55,10 +55,33 @@ data class SavingsMonth(
     val runningBalanceCents: Long
 )
 
+/** Ein Punkt der Sparkurve: entweder erfasst oder hochgerechnet. */
+data class SavingsPoint(
+    val period: Int,
+    val balanceCents: Long,
+    val forecast: Boolean
+)
+
+data class SavingsForecast(
+    /** Monate mit Einträgen, die nicht in der Zukunft liegen. */
+    val basisMonths: Int = 0,
+    val averageCents: Long = 0L,
+    /** Künftige Monate des angezeigten Jahres ohne Eintrag. */
+    val openMonths: Int = 0,
+    val balanceTodayCents: Long = 0L,
+    val points: List<SavingsPoint> = emptyList(),
+    val endOfYearCents: Long = 0L,
+    val inTwelveMonthsCents: Long = 0L
+) {
+    /** Nur anzeigen, wenn es eine Grundlage und etwas hochzurechnen gibt. */
+    val available: Boolean get() = basisMonths > 0 && openMonths > 0
+}
+
 data class SavingsUiState(
     val year: Int = Period.currentYear(),
     val startBalanceCents: Long = 0L,
-    val months: List<SavingsMonth> = emptyList()
+    val months: List<SavingsMonth> = emptyList(),
+    val forecast: SavingsForecast = SavingsForecast()
 ) {
     val yearTotalCents: Long get() = months.sumOf { it.netCents }
     val endBalanceCents: Long get() = startBalanceCents + yearTotalCents
@@ -128,7 +151,9 @@ object FinanceCalculator {
     fun buildSavingsState(
         year: Int,
         entries: List<SavingsEntry>,
-        startBalanceCents: Long
+        startBalanceCents: Long,
+        allEntries: List<SavingsEntry> = entries,
+        today: Int = Period.current()
     ): SavingsUiState {
         var running = startBalanceCents
         val months = (1..12).map { month ->
@@ -138,6 +163,66 @@ object FinanceCalculator {
             running += net
             SavingsMonth(period, items, net, running)
         }
-        return SavingsUiState(year = year, startBalanceCents = startBalanceCents, months = months)
+        return SavingsUiState(
+            year = year,
+            startBalanceCents = startBalanceCents,
+            months = months,
+            forecast = buildSavingsForecast(year, allEntries, today)
+        )
+    }
+
+    /**
+     * Prognose auf Basis des bisherigen Sparverhaltens.
+     *
+     * Grundlage ist der Durchschnitt über alle Monate, in denen bereits etwas
+     * erfasst wurde und die nicht in der Zukunft liegen. Ein vergangener Monat
+     * ohne Eintrag ist eine Tatsache (nichts gespart) und wird nicht
+     * hochgerechnet – nur künftige Monate ohne Eintrag.
+     */
+    fun buildSavingsForecast(
+        year: Int,
+        allEntries: List<SavingsEntry>,
+        today: Int = Period.current()
+    ): SavingsForecast {
+        val netByPeriod: Map<Int, Long> = allEntries
+            .groupBy { it.period }
+            .mapValues { (_, items) -> items.sumOf { it.amountCents } }
+
+        val basis = netByPeriod.filterKeys { it <= today }
+        val basisMonths = basis.size
+        val averageCents =
+            if (basisMonths == 0) 0L
+            else Math.round(basis.values.sum().toDouble() / basisMonths)
+
+        val balanceToday = allEntries.filter { it.period <= today }.sumOf { it.amountCents }
+
+        var running = allEntries.filter { it.period < Period.firstOfYear(year) }.sumOf { it.amountCents }
+        var openMonths = 0
+        val points = (1..12).map { month ->
+            val period = Period.of(year, month)
+            val entered = netByPeriod[period]
+            val isForecast = entered == null && period > today && basisMonths > 0
+            when {
+                entered != null -> running += entered
+                isForecast -> { running += averageCents; openMonths++ }
+            }
+            SavingsPoint(period, running, isForecast)
+        }
+
+        return SavingsForecast(
+            basisMonths = basisMonths,
+            averageCents = averageCents,
+            openMonths = openMonths,
+            balanceTodayCents = balanceToday,
+            points = points,
+            endOfYearCents = points.last().balanceCents,
+            inTwelveMonthsCents = balanceToday + averageCents * 12
+        )
+    }
+
+    /** Anzahl Monate, die ein befristeter Posten ab [from] noch läuft. */
+    fun remainingMonths(entry: FinanceEntry, from: Int): Int? {
+        val end = entry.endPeriod ?: return null
+        return (end - from + 1).coerceAtLeast(0)
     }
 }
